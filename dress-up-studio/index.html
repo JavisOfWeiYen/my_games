@@ -201,8 +201,8 @@ const BANGS = `
   <path d="M102 98 Q96 128 102 150 L113 108 Z" fill="{{c}}"/>
   <path d="M198 98 Q204 128 198 150 L187 108 Z" fill="{{c}}"/>`;
 
-const HAIR_COLORS = ['#8d5a3b','#3a2e2a','#f7c873','#e07b39','#ff8fb3','#b388ff','#5db8ff','#7bd88f'];
-const COLORS = ['#ff6fa5','#ff9f43','#ffd93d','#7bd88f','#4fc3f7','#b388ff','#f06292','#5c6bc0','#ffffff','#37474f'];
+const HAIR_COLORS = ['#fcf6e8','#8d5a3b','#3a2e2a','#f7c873','#e07b39','#ff8fb3','#b388ff','#5db8ff'];
+const COLORS = ['#8fd3f4','#ff6fa5','#ff9f43','#ffd93d','#7bd88f','#4fc3f7','#b388ff','#f06292','#5c6bc0','#ffffff','#37474f'];
 
 const CATS = [
   {
@@ -260,6 +260,26 @@ const CATS = [
         <g><circle cx="70" cy="130" r="4" fill="#ff6fa5"/><circle cx="240" cy="110" r="4" fill="#7bd88f"/>
         <circle cx="35" cy="220" r="4" fill="#ffd93d"/><circle cx="268" cy="230" r="4" fill="#ff9f43"/>
         <circle cx="60" cy="320" r="4" fill="#b388ff"/><circle cx="245" cy="300" r="4" fill="#4fc3f7"/></g>` },
+      { name: 'Ice Castle', zh: '冰雪城堡', emoji: '🏰', svg: `
+        <defs><linearGradient id="bgIce" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#2a4d75"/><stop offset=".6" stop-color="#7db8dd"/><stop offset="1" stop-color="#cfeaf8"/>
+        </linearGradient></defs>
+        <rect width="300" height="520" fill="url(#bgIce)"/>
+        <g fill="#dff2fc" opacity=".85">
+          <path d="M30 200 L30 130 L42 100 L54 130 L54 200 Z"/>
+          <path d="M54 200 L54 150 L66 122 L78 150 L78 200 Z"/>
+          <path d="M14 200 L14 160 L24 140 L34 160 L34 200 Z"/>
+          <rect x="10" y="196" width="72" height="30" rx="3"/>
+          <path d="M236 210 L236 140 L250 105 L264 140 L264 210 Z"/>
+          <path d="M264 210 L264 165 L274 145 L284 165 L284 210 Z"/>
+          <rect x="232" y="206" width="58" height="26" rx="3"/>
+        </g>
+        <path d="M0 446 Q70 430 150 444 Q230 458 300 440 L300 520 L0 520 Z" fill="#eef8fd"/>
+        <g fill="#ffffff">
+          <circle cx="60" cy="80" r="2.5"/><circle cx="120" cy="50" r="2"/><circle cx="200" cy="75" r="2.5"/>
+          <circle cx="260" cy="45" r="2"/><circle cx="90" cy="260" r="2"/><circle cx="225" cy="300" r="2"/>
+          <circle cx="40" cy="330" r="2.5"/><circle cx="270" cy="380" r="2"/><circle cx="150" cy="30" r="2"/>
+        </g>` },
     ]
   },
   {
@@ -286,6 +306,15 @@ const CATS = [
         <path d="M104 95 Q104 44 150 44 Q196 44 196 95 Q150 116 104 95 Z" fill="{{c}}"/>
         <circle cx="150" cy="33" r="19" fill="{{c}}"/>
         <rect x="137" y="44" width="26" height="7" rx="3.5" fill="#ff5d8f"/>` },
+      { name: 'Side Braid', zh: '公主髮辮', emoji: '👸', svg: `
+        <path d="M101 106 Q97 40 150 40 Q203 40 199 106 Q197 68 172 60 Q136 52 106 76 Q101 90 101 106 Z" fill="{{c}}"/>
+        <g fill="{{c}}">
+          <circle cx="196" cy="118" r="11"/><circle cx="203" cy="140" r="10.5"/><circle cx="196" cy="162" r="10"/>
+          <circle cx="203" cy="184" r="9.5"/><circle cx="197" cy="206" r="9"/><circle cx="202" cy="226" r="7"/>
+        </g>
+        <path d="M202 233 L203 243" stroke="{{c}}" stroke-width="5" stroke-linecap="round"/>
+        <rect x="194" y="214" width="16" height="5" rx="2.5" fill="#bfe6f7" transform="rotate(8 202 216)"/>`, back: `
+        <path d="M104 95 Q104 44 150 44 Q196 44 196 95 Q150 116 104 95 Z" fill="{{c}}"/>` },
     ]
   },
   {
@@ -354,6 +383,17 @@ const CATS = [
         <path d="M117 238 Q150 250 183 238 L183 246 Q174 257 163 248 Q156 258 150 248 Q144 258 137 248 Q126 257 117 246 Z" fill="{{c}}"/>
         <circle cx="150" cy="190" r="2.5" fill="{{cd}}"/><circle cx="150" cy="206" r="2.5" fill="{{cd}}"/><circle cx="150" cy="222" r="2.5" fill="{{cd}}"/>
         <path d="M141 164 L150 170 L159 164" stroke="{{cd}}" stroke-width="3.5" fill="none" stroke-linecap="round"/>` },
+      { name: 'Ice Queen', zh: '冰雪女王', emoji: '❄️', svg: `
+        <path d="M124 176 Q108 215 101 250" stroke="{{c}}" stroke-width="15" fill="none" stroke-linecap="round" opacity=".35"/>
+        <path d="M176 176 Q192 215 199 250" stroke="{{c}}" stroke-width="15" fill="none" stroke-linecap="round" opacity=".35"/>
+        <path d="M120 166 Q150 158 180 166 L184 252 Q150 264 116 252 Z" fill="{{c}}"/>
+        <path d="M120 166 Q150 180 180 166 L181 176 Q150 190 119 176 Z" fill="{{cd}}"/>
+        <g fill="#fff" opacity=".9">
+          <path d="M150 198 l3.5 7 -3.5 7 -3.5-7 z"/>
+          <path d="M134 220 l3 6 -3 6 -3-6 z"/>
+          <path d="M166 222 l3 6 -3 6 -3-6 z"/>
+          <circle cx="142" cy="240" r="1.8"/><circle cx="158" cy="208" r="1.8"/>
+        </g>` },
     ]
   },
   {
@@ -386,6 +426,14 @@ const CATS = [
         <path d="M118 242 L110 298 Q124 304 139 299 L148 264 L152 264 L161 299 Q176 304 190 298 L182 242 Q150 256 118 242 Z" fill="{{c}}"/>
         <path d="M118 242 Q150 256 182 242 L183 252 Q150 266 117 252 Z" fill="{{cd}}"/>
         <circle cx="150" cy="258" r="3" fill="{{cd}}"/>` },
+      { name: 'Ice Gown', zh: '冰雪長裙', emoji: '💙', svg: `
+        <path d="M118 242 L100 426 Q150 442 200 426 L182 242 Q150 256 118 242 Z" fill="{{c}}"/>
+        <path d="M152 300 L140 424 Q152 430 166 424 Z" fill="#ffffff" opacity=".4"/>
+        <g stroke="#ffffff" stroke-width="2" opacity=".8" fill="none" stroke-linecap="round">
+          <path d="M130 330 L130 344 M123 337 L137 337 M125 332 L135 342 M135 332 L125 342"/>
+          <path d="M172 370 L172 382 M166 376 L178 376 M168 372 L176 380 M176 372 L168 380"/>
+        </g>
+        <path d="M118 242 Q150 256 182 242 L183 254 Q150 268 117 254 Z" fill="{{cd}}"/>` },
     ]
   },
   {
@@ -459,16 +507,41 @@ const CATS = [
             <circle cx="110" cy="210" r="3.5"/><circle cx="190" cy="210" r="3.5"/>
           </g>
         </g>`, svg: `` },
+      { name: 'Snow Cape', zh: '雪花披風', emoji: '🌨️', back: `
+        <path d="M124 170 L176 170 L210 438 Q150 456 90 438 Z" fill="{{c}}" opacity=".5"/>
+        <g fill="#fff" opacity=".85">
+          <circle cx="102" cy="300" r="2.5"/><circle cx="198" cy="330" r="2.5"/><circle cx="96" cy="380" r="2.5"/>
+          <circle cx="204" cy="400" r="2.5"/><circle cx="112" cy="430" r="2.5"/><circle cx="188" cy="444" r="2.5"/>
+          <circle cx="108" cy="240" r="2"/><circle cx="192" cy="250" r="2"/>
+        </g>`, svg: `
+        <path d="M126 172 Q150 180 174 172" stroke="#fff" stroke-width="3" fill="none"/>
+        <circle cx="125" cy="172" r="4.5" fill="#fff"/><circle cx="175" cy="172" r="4.5" fill="#fff"/>` },
+      { name: 'Ice Magic', zh: '冰雪魔法', emoji: '✨', svg: `
+        <g stroke="{{c}}" stroke-width="2.5" fill="none" stroke-linecap="round">
+          <path d="M84 222 L84 240 M75 231 L93 231 M78 225 L90 237 M90 225 L78 237"/>
+          <path d="M65 196 L65 208 M59 202 L71 202 M61 198 L69 206 M69 198 L61 206"/>
+          <path d="M98 192 L98 202 M93 197 L103 197"/>
+        </g>
+        <g fill="{{c}}" opacity=".7">
+          <circle cx="72" cy="252" r="3"/><circle cx="100" cy="214" r="2.5"/><circle cx="58" cy="224" r="2"/><circle cx="88" cy="206" r="2"/>
+        </g>` },
     ]
   },
 ];
 
 // ---------------- game state ----------------
 let state = {};
+// she starts dressed as the Ice Queen ❄️ — press Reset to come back to this look
 function defaultState() {
-  const s = {};
-  for (const c of CATS) s[c.id] = { sel: c.multi ? [] : 0, color: c.def };
-  return s;
+  return {
+    bg:    { sel: 5, color: '#ffffff' },          // Ice Castle
+    hair:  { sel: 5, color: '#fcf6e8' },          // platinum Side Braid
+    hat:   { sel: 0, color: '#ffd93d' },          // no hat
+    top:   { sel: 5, color: '#8fd3f4' },          // Ice Queen top
+    skirt: { sel: 5, color: '#8fd3f4' },          // Ice Gown
+    shoes: { sel: 1, color: '#8fd3f4' },          // ballet flats
+    acc:   { sel: [6, 7], color: '#8fd3f4' },     // Snow Cape + Ice Magic
+  };
 }
 
 let activeCat = 'hair';
