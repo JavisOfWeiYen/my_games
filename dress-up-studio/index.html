@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>✨ Dress-Up Studio 換裝小遊戲 ✨</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Microsoft JhengHei", sans-serif;
+    background: linear-gradient(160deg, #ffe9f3 0%, #e6f3ff 55%, #fff7d9 100%);
+    min-height: 100vh;
+    color: #5a4a6a;
+  }
+  header {
+    text-align: center;
+    padding: 14px 10px 4px;
+  }
+  header h1 { margin: 0; font-size: 28px; color: #e75a9c; text-shadow: 2px 2px 0 #fff; }
+  header p { margin: 4px 0 0; font-size: 14px; color: #9b7fb8; }
+  main {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 12px;
+  }
+  /* ---------- stage (the doll) ---------- */
+  #stage {
+    position: relative;
+    background: #fff;
+    border-radius: 24px;
+    padding: 10px;
+    box-shadow: 0 8px 24px rgba(180, 120, 200, .25);
+    overflow: hidden;
+  }
+  #doll { display: block; width: 300px; height: 520px; border-radius: 16px; }
+  #stageBtns { display: flex; gap: 8px; margin-top: 10px; }
+  #stageBtns button {
+    flex: 1;
+    border: none;
+    border-radius: 14px;
+    padding: 10px 4px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  #stageBtns button:active { transform: scale(.93); }
+  #btnRandom { background: #ff8fb3; }
+  #btnSave   { background: #6fc3f7; }
+  #btnReset  { background: #b8a7d9; }
+  .confetti {
+    position: absolute; top: -30px;
+    font-size: 24px; pointer-events: none;
+    animation: fall 1.6s ease-in forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(600px) rotate(380deg); opacity: 0; }
+  }
+  /* ---------- panel (the wardrobe) ---------- */
+  #panel {
+    background: #fff;
+    border-radius: 24px;
+    padding: 14px;
+    width: min(440px, 96vw);
+    box-shadow: 0 8px 24px rgba(180, 120, 200, .25);
+  }
+  #tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  #tabs button {
+    border: 3px solid transparent;
+    background: #f3eaff;
+    border-radius: 14px;
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    color: #7a5fa0;
+  }
+  #tabs button.on { background: #ffd6e7; border-color: #ff8fb3; color: #d6427f; }
+  #items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  #items button {
+    border: 3px solid #eee4f8;
+    background: #fdfaff;
+    border-radius: 16px;
+    padding: 8px 4px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  #items button:active { transform: scale(.93); }
+  #items button.on { border-color: #ffb347; background: #fff4dd; }
+  #items .em { font-size: 30px; display: block; }
+  #items .nm { font-size: 12px; color: #7a6a8a; display: block; margin-top: 2px; }
+  #colorsWrap { margin-top: 12px; }
+  #colorsWrap .lbl { font-size: 13px; color: #9b7fb8; margin-bottom: 6px; }
+  #colors { display: flex; flex-wrap: wrap; gap: 8px; }
+  #colors button {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(0,0,0,.12);
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  #colors button.on { border-color: #5a4a6a; transform: scale(1.15); }
+  footer { text-align: center; font-size: 12px; color: #b8a7c9; padding: 8px 0 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>✨ Dress-Up Studio 換裝小遊戲 ✨</h1>
+  <p>Click the tabs to dress her up! 點選分類來幫她打扮吧！</p>
+</header>
+
+<main>
+  <section id="stage">
+    <svg id="doll" viewBox="0 0 300 520" xmlns="http://www.w3.org/2000/svg">
+      <g id="L-bg"></g>
+      <g id="L-accback"></g>
+      <g id="L-hairback"></g>
+      <!-- the girl (base body) -->
+      <g id="base">
+        <ellipse cx="150" cy="468" rx="62" ry="10" fill="#000" opacity=".07"/>
+        <line x1="137" y1="262" x2="137" y2="448" stroke="#ffd9b3" stroke-width="17" stroke-linecap="round"/>
+        <line x1="163" y1="262" x2="163" y2="448" stroke="#ffd9b3" stroke-width="17" stroke-linecap="round"/>
+        <path d="M124 176 Q108 215 101 258" stroke="#ffd9b3" stroke-width="14" stroke-linecap="round" fill="none"/>
+        <path d="M176 176 Q192 215 199 258" stroke="#ffd9b3" stroke-width="14" stroke-linecap="round" fill="none"/>
+        <rect x="142" y="132" width="16" height="34" fill="#ffd9b3"/>
+        <path d="M120 168 Q150 157 180 168 L184 252 Q150 264 116 252 Z" fill="#ffd9b3"/>
+        <circle cx="104" cy="102" r="8" fill="#ffd9b3"/>
+        <circle cx="196" cy="102" r="8" fill="#ffd9b3"/>
+        <circle cx="150" cy="100" r="46" fill="#ffd9b3"/>
+      </g>
+      <g id="face">
+        <circle cx="133" cy="100" r="4.5" fill="#5b4233"/>
+        <circle cx="167" cy="100" r="4.5" fill="#5b4233"/>
+        <circle cx="134.5" cy="98.5" r="1.5" fill="#fff"/>
+        <circle cx="168.5" cy="98.5" r="1.5" fill="#fff"/>
+        <path d="M138 117 Q150 127 162 117" stroke="#d4766c" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <circle cx="120" cy="112" r="6.5" fill="#ffb3ba" opacity=".55"/>
+        <circle cx="180" cy="112" r="6.5" fill="#ffb3ba" opacity=".55"/>
+      </g>
+      <g id="L-top"></g>
+      <g id="L-skirt"></g>
+      <g id="L-shoes"></g>
+      <g id="L-hairfront"></g>
+      <g id="L-hat"></g>
+      <g id="L-acc"></g>
+    </svg>
+    <div id="stageBtns">
+      <button id="btnRandom">🎲 Surprise! 隨機</button>
+      <button id="btnSave">📷 Save 存照片</button>
+      <button id="btnReset">↺ Reset 重來</button>
+    </div>
+  </section>
+
+  <section id="panel">
+    <nav id="tabs"></nav>
+    <div id="items"></div>
+    <div id="colorsWrap">
+      <div class="lbl">🎨 Pick a color 選顏色</div>
+      <div id="colors"></div>
+    </div>
+  </section>
+</main>
+
+<footer>Made with ❤️ — drawings are SVG, open this file in any browser to play.</footer>
+
+<script>
+// ============================================================
+//  Dress-Up Studio
+//  All clothes are little SVG drawings. {{c}} is the chosen
+//  color, {{cd}} is a darker shade of it.
+//  Want to add your own clothes? Copy an item below and
+//  change the shapes — it's just drawing with code!
+// ============================================================
+
+const $ = s => document.querySelector(s);
+
+// darker shade of a hex color, for outlines and details
+function dk(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => Math.round(v * 0.68);
+  const r = f(n >> 16 & 255), g = f(n >> 8 & 255), b = f(n & 255);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+// fringe (bangs) shared by every hairstyle
+const BANGS = `
+  <path d="M101 106 Q98 42 150 42 Q202 42 199 106 Q193 76 176 70 Q164 64 150 77 Q136 64 124 70 Q107 76 101 106 Z" fill="{{c}}"/>
+  <path d="M102 98 Q96 128 102 150 L113 108 Z" fill="{{c}}"/>
+  <path d="M198 98 Q204 128 198 150 L187 108 Z" fill="{{c}}"/>`;
+
+const HAIR_COLORS = ['#8d5a3b','#3a2e2a','#f7c873','#e07b39','#ff8fb3','#b388ff','#5db8ff','#7bd88f'];
+const COLORS = ['#ff6fa5','#ff9f43','#ffd93d','#7bd88f','#4fc3f7','#b388ff','#f06292','#5c6bc0','#ffffff','#37474f'];
+
+const CATS = [
+  {
+    id: 'bg', name: 'Background', zh: '背景', emoji: '🌈',
+    layer: 'L-bg', colors: null, def: '#ffffff',
+    items: [
+      { name: 'Sunny Sky', zh: '晴天', emoji: '☁️', svg: `
+        <defs><linearGradient id="bgSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#bfe3ff"/><stop offset="1" stop-color="#ffe9f3"/>
+        </linearGradient></defs>
+        <rect width="300" height="520" fill="url(#bgSky)"/>
+        <circle cx="252" cy="48" r="26" fill="#ffd93d"/>
+        <g fill="#ffffff" opacity=".9">
+          <ellipse cx="68" cy="62" rx="30" ry="13"/><ellipse cx="94" cy="53" rx="22" ry="11"/>
+          <ellipse cx="228" cy="125" rx="26" ry="11"/><ellipse cx="55" cy="180" rx="22" ry="9"/>
+        </g>` },
+      { name: 'Hearts', zh: '愛心', emoji: '💗', svg: `
+        <rect width="300" height="520" fill="#ffe3ee"/>
+        <defs><path id="bh" d="M0 0 c-3-6-12-5-12 2 c0 6 12 12 12 12 c0 0 12-6 12-12 c0-7-9-8-12-2z"/></defs>
+        <g fill="#ff9ec0">
+          <use href="#bh" transform="translate(40 55)"/><use href="#bh" transform="translate(252 85) scale(.8)"/>
+          <use href="#bh" transform="translate(32 300) scale(.7)"/><use href="#bh" transform="translate(264 260) scale(1.1)"/>
+          <use href="#bh" transform="translate(46 452) scale(.9)"/><use href="#bh" transform="translate(256 432) scale(.7)"/>
+          <use href="#bh" transform="translate(150 26) scale(.6)"/><use href="#bh" transform="translate(262 165) scale(.6)"/>
+        </g>` },
+      { name: 'Night Sky', zh: '星空', emoji: '🌙', svg: `
+        <rect width="300" height="520" fill="#2b3a67"/>
+        <circle cx="245" cy="60" r="24" fill="#fff3c4"/><circle cx="234" cy="53" r="21" fill="#2b3a67"/>
+        <g fill="#ffe9a8">
+          <circle cx="40" cy="50" r="3"/><circle cx="90" cy="90" r="2"/><circle cx="60" cy="150" r="2.5"/>
+          <circle cx="250" cy="160" r="3"/><circle cx="220" cy="240" r="2"/><circle cx="35" cy="260" r="2"/>
+          <circle cx="270" cy="350" r="2.5"/><circle cx="50" cy="400" r="3"/><circle cx="255" cy="470" r="2"/>
+          <path d="M150 30 l3 8 8 3 -8 3 -3 8 -3-8 -8-3 8-3 z"/>
+          <path d="M70 330 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5-6 -6-2.5 6-2.5 z"/>
+        </g>` },
+      { name: 'Rainbow', zh: '彩虹', emoji: '🌈', svg: `
+        <rect width="300" height="520" fill="#d6f0ff"/>
+        <g fill="none" stroke-width="11">
+          <path d="M16 210 A134 134 0 0 1 284 210" stroke="#ff6f61"/>
+          <path d="M29 210 A121 121 0 0 1 271 210" stroke="#ffd93d"/>
+          <path d="M42 210 A108 108 0 0 1 258 210" stroke="#7bd88f"/>
+          <path d="M55 210 A95 95 0 0 1 245 210" stroke="#4fc3f7"/>
+        </g>
+        <rect y="442" width="300" height="78" fill="#a8e07e"/>
+        <g><circle cx="45" cy="470" r="7" fill="#ff8fb3"/><circle cx="45" cy="470" r="3" fill="#ffd93d"/>
+        <circle cx="262" cy="488" r="7" fill="#b388ff"/><circle cx="262" cy="488" r="3" fill="#ffd93d"/></g>` },
+      { name: 'Party', zh: '派對', emoji: '🎈', svg: `
+        <rect width="300" height="520" fill="#fff7e0"/>
+        <path d="M0 26 Q150 46 300 14" stroke="#d8c8a8" stroke-width="2" fill="none"/>
+        <g><path d="M28 30 L46 32 L37 56 Z" fill="#ff6fa5"/><path d="M78 36 L96 37 L87 61 Z" fill="#4fc3f7"/>
+        <path d="M130 39 L148 39 L139 63 Z" fill="#ffd93d"/><path d="M182 37 L200 35 L191 60 Z" fill="#7bd88f"/>
+        <path d="M234 31 L252 28 L243 53 Z" fill="#b388ff"/></g>
+        <g><ellipse cx="40" cy="400" rx="17" ry="21" fill="#ff8fb3"/><path d="M40 421 L37 470" stroke="#caa" stroke-width="2" fill="none"/>
+        <ellipse cx="265" cy="370" rx="17" ry="21" fill="#6fc3f7"/><path d="M265 391 L268 445" stroke="#caa" stroke-width="2" fill="none"/></g>
+        <g><circle cx="70" cy="130" r="4" fill="#ff6fa5"/><circle cx="240" cy="110" r="4" fill="#7bd88f"/>
+        <circle cx="35" cy="220" r="4" fill="#ffd93d"/><circle cx="268" cy="230" r="4" fill="#ff9f43"/>
+        <circle cx="60" cy="320" r="4" fill="#b388ff"/><circle cx="245" cy="300" r="4" fill="#4fc3f7"/></g>` },
+    ]
+  },
+  {
+    id: 'hair', name: 'Hair', zh: '頭髮', emoji: '💇‍♀️',
+    layer: 'L-hairfront', layerBack: 'L-hairback', colors: HAIR_COLORS, def: '#8d5a3b',
+    items: [
+      { name: 'Long Hair', zh: '長髮', emoji: '👩', svg: BANGS, back: `
+        <path d="M102 92 Q102 44 150 44 Q198 44 198 92 L203 192 Q177 212 150 199 Q123 212 97 192 Z" fill="{{c}}"/>` },
+      { name: 'Twin Tails', zh: '雙馬尾', emoji: '🎀', svg: BANGS, back: `
+        <path d="M104 95 Q104 44 150 44 Q196 44 196 95 Q150 116 104 95 Z" fill="{{c}}"/>
+        <ellipse cx="91" cy="138" rx="15" ry="34" fill="{{c}}" transform="rotate(10 91 138)"/>
+        <ellipse cx="209" cy="138" rx="15" ry="34" fill="{{c}}" transform="rotate(-10 209 138)"/>
+        <circle cx="97" cy="104" r="6" fill="#ff5d8f"/><circle cx="203" cy="104" r="6" fill="#ff5d8f"/>` },
+      { name: 'Short Bob', zh: '短髮', emoji: '👧', svg: BANGS, back: `
+        <path d="M100 92 Q100 42 150 42 Q200 42 200 92 L203 148 Q177 167 150 157 Q123 167 97 148 Z" fill="{{c}}"/>` },
+      { name: 'Braids', zh: '辮子', emoji: '🧶', svg: BANGS, back: `
+        <path d="M104 95 Q104 44 150 44 Q196 44 196 95 Q150 116 104 95 Z" fill="{{c}}"/>
+        <g fill="{{c}}">
+          <circle cx="103" cy="128" r="10"/><circle cx="99" cy="148" r="9"/><circle cx="103" cy="168" r="9"/><circle cx="99" cy="188" r="8"/>
+          <circle cx="197" cy="128" r="10"/><circle cx="201" cy="148" r="9"/><circle cx="197" cy="168" r="9"/><circle cx="201" cy="188" r="8"/>
+        </g>
+        <circle cx="99" cy="200" r="5" fill="#ff5d8f"/><circle cx="201" cy="200" r="5" fill="#ff5d8f"/>` },
+      { name: 'Bun', zh: '包包頭', emoji: '🍡', svg: BANGS, back: `
+        <path d="M104 95 Q104 44 150 44 Q196 44 196 95 Q150 116 104 95 Z" fill="{{c}}"/>
+        <circle cx="150" cy="33" r="19" fill="{{c}}"/>
+        <rect x="137" y="44" width="26" height="7" rx="3.5" fill="#ff5d8f"/>` },
+    ]
+  },
+  {
+    id: 'hat', name: 'Hat', zh: '帽子', emoji: '👒',
+    layer: 'L-hat', colors: COLORS, def: '#ffd93d',
+    items: [
+      { name: 'No Hat', zh: '不戴', emoji: '🚫', svg: `` },
+      { name: 'Sun Hat', zh: '草帽', emoji: '👒', svg: `
+        <ellipse cx="150" cy="60" rx="60" ry="15" fill="{{c}}"/>
+        <path d="M114 58 Q114 22 150 22 Q186 22 186 58 Q150 70 114 58 Z" fill="{{c}}"/>
+        <path d="M115 54 Q150 66 185 54" stroke="{{cd}}" stroke-width="6" fill="none"/>` },
+      { name: 'Crown', zh: '皇冠', emoji: '👑', svg: `
+        <path d="M120 56 L120 28 L136 42 L150 22 L164 42 L180 28 L180 56 Q150 66 120 56 Z" fill="{{c}}"/>
+        <circle cx="120" cy="26" r="4" fill="{{cd}}"/><circle cx="150" cy="20" r="4" fill="{{cd}}"/><circle cx="180" cy="26" r="4" fill="{{cd}}"/>
+        <circle cx="150" cy="48" r="5" fill="#ff5d8f"/>` },
+      { name: 'Party Hat', zh: '派對帽', emoji: '🎉', svg: `
+        <path d="M150 6 L127 56 Q150 66 173 56 Z" fill="{{c}}"/>
+        <path d="M139 30 L166 37" stroke="{{cd}}" stroke-width="5"/>
+        <path d="M132 45 L171 53" stroke="{{cd}}" stroke-width="5"/>
+        <circle cx="150" cy="8" r="7" fill="{{cd}}"/>` },
+      { name: 'Beanie', zh: '毛帽', emoji: '🧢', svg: `
+        <path d="M112 60 Q112 18 150 18 Q188 18 188 60 Q150 72 112 60 Z" fill="{{c}}"/>
+        <path d="M112 56 Q150 70 188 56 L188 66 Q150 80 112 66 Z" fill="{{cd}}"/>
+        <circle cx="150" cy="16" r="8" fill="{{cd}}"/>` },
+      { name: 'Big Bow', zh: '蝴蝶結', emoji: '🎀', svg: `
+        <g transform="translate(184 60) rotate(18)">
+          <path d="M0 0 L-26 -13 L-21 13 Z" fill="{{c}}"/>
+          <path d="M0 0 L26 -13 L21 13 Z" fill="{{c}}"/>
+          <circle r="6.5" fill="{{cd}}"/>
+        </g>` },
+    ]
+  },
+  {
+    id: 'top', name: 'Clothes', zh: '上衣', emoji: '👕',
+    layer: 'L-top', colors: COLORS, def: '#ff6fa5',
+    items: [
+      { name: 'T-Shirt', zh: 'T恤', emoji: '👕', svg: `
+        <path d="M150 158 Q170 158 182 165 L200 180 L191 206 L182 199 L185 250 Q150 262 115 250 L118 199 L109 206 L100 180 L118 165 Q130 158 150 158 Z" fill="{{c}}"/>
+        <path d="M137 160 Q150 172 163 160" fill="none" stroke="{{cd}}" stroke-width="4"/>
+        <path d="M150 198 c-2.5-5.5-11-4.5-11 2 c0 5.5 11 11 11 11 c0 0 11-5.5 11-11 c0-6.5-8.5-7.5-11-2 z" fill="#fff" opacity=".85"/>` },
+      { name: 'Striped Tee', zh: '條紋衫', emoji: '🦓', svg: `
+        <defs><clipPath id="cpTee"><path d="M150 158 Q170 158 182 165 L200 180 L191 206 L182 199 L185 250 Q150 262 115 250 L118 199 L109 206 L100 180 L118 165 Q130 158 150 158 Z"/></clipPath></defs>
+        <path d="M150 158 Q170 158 182 165 L200 180 L191 206 L182 199 L185 250 Q150 262 115 250 L118 199 L109 206 L100 180 L118 165 Q130 158 150 158 Z" fill="{{c}}"/>
+        <g clip-path="url(#cpTee)" fill="#ffffff" opacity=".85">
+          <rect x="95" y="174" width="110" height="9"/><rect x="95" y="195" width="110" height="9"/>
+          <rect x="95" y="216" width="110" height="9"/><rect x="95" y="237" width="110" height="9"/>
+        </g>
+        <path d="M137 160 Q150 172 163 160" fill="none" stroke="{{cd}}" stroke-width="4"/>` },
+      { name: 'Sweater', zh: '毛衣', emoji: '🧶', svg: `
+        <path d="M124 176 Q108 215 101 250" stroke="{{c}}" stroke-width="19" fill="none" stroke-linecap="round"/>
+        <path d="M176 176 Q192 215 199 250" stroke="{{c}}" stroke-width="19" fill="none" stroke-linecap="round"/>
+        <path d="M118 166 Q150 154 182 166 L186 254 Q150 266 114 254 Z" fill="{{c}}"/>
+        <path d="M120 213 L130 204 L140 213 L150 204 L160 213 L170 204 L180 213" stroke="{{cd}}" stroke-width="3.5" fill="none"/>
+        <path d="M115 246 Q150 258 185 246 L185 254 Q150 266 115 254 Z" fill="{{cd}}"/>
+        <path d="M136 160 Q150 171 164 160 L164 167 Q150 178 136 167 Z" fill="{{cd}}"/>` },
+      { name: 'Hoodie', zh: '連帽外套', emoji: '🧥', svg: `
+        <path d="M124 176 Q108 215 101 250" stroke="{{c}}" stroke-width="19" fill="none" stroke-linecap="round"/>
+        <path d="M176 176 Q192 215 199 250" stroke="{{c}}" stroke-width="19" fill="none" stroke-linecap="round"/>
+        <path d="M118 166 Q150 154 182 166 L186 254 Q150 266 114 254 Z" fill="{{c}}"/>
+        <path d="M122 170 Q119 146 150 144 Q181 146 178 170 Q150 158 122 170 Z" fill="{{cd}}"/>
+        <path d="M132 226 L168 226 L163 250 L137 250 Z" fill="{{cd}}"/>
+        <path d="M142 172 L141 192 M158 172 L159 192" stroke="#fff" stroke-width="3" stroke-linecap="round"/>` },
+      { name: 'Puffy Blouse', zh: '泡泡袖', emoji: '👚', svg: `
+        <circle cx="115" cy="178" r="14" fill="{{c}}"/><circle cx="185" cy="178" r="14" fill="{{c}}"/>
+        <path d="M120 166 Q150 156 180 166 L183 242 Q150 252 117 242 Z" fill="{{c}}"/>
+        <path d="M117 238 Q150 250 183 238 L183 246 Q174 257 163 248 Q156 258 150 248 Q144 258 137 248 Q126 257 117 246 Z" fill="{{c}}"/>
+        <circle cx="150" cy="190" r="2.5" fill="{{cd}}"/><circle cx="150" cy="206" r="2.5" fill="{{cd}}"/><circle cx="150" cy="222" r="2.5" fill="{{cd}}"/>
+        <path d="M141 164 L150 170 L159 164" stroke="{{cd}}" stroke-width="3.5" fill="none" stroke-linecap="round"/>` },
+    ]
+  },
+  {
+    id: 'skirt', name: 'Skirt', zh: '裙子', emoji: '👗',
+    layer: 'L-skirt', colors: COLORS, def: '#b388ff',
+    items: [
+      { name: 'Twirly Skirt', zh: '小圓裙', emoji: '👗', svg: `
+        <path d="M118 242 L98 332 Q150 350 202 332 L182 242 Q150 256 118 242 Z" fill="{{c}}"/>
+        <path d="M102 322 Q150 340 198 322" stroke="{{cd}}" stroke-width="4" fill="none"/>
+        <path d="M118 242 Q150 256 182 242 L183 254 Q150 268 117 254 Z" fill="{{cd}}"/>` },
+      { name: 'Tutu', zh: '蓬蓬裙', emoji: '🩰', svg: `
+        <g fill="{{c}}">
+          <path d="M116 244 L94 302 Q150 326 206 302 L184 244 Q150 258 116 244 Z" opacity=".5"/>
+          <path d="M120 244 L103 291 Q150 312 197 291 L180 244 Q150 258 120 244 Z" opacity=".75"/>
+          <path d="M124 244 L111 280 Q150 297 189 280 L176 244 Q150 257 124 244 Z"/>
+        </g>
+        <g fill="#fff" opacity=".8"><circle cx="130" cy="270" r="2.5"/><circle cx="158" cy="282" r="2.5"/><circle cx="176" cy="263" r="2.5"/></g>
+        <path d="M120 242 Q150 256 180 242 L181 253 Q150 266 119 253 Z" fill="{{cd}}"/>` },
+      { name: 'Long Skirt', zh: '長裙', emoji: '💃', svg: `
+        <path d="M118 242 L103 420 Q150 437 197 420 L182 242 Q150 256 118 242 Z" fill="{{c}}"/>
+        <path d="M106 408 Q150 426 194 408" stroke="{{cd}}" stroke-width="4" fill="none"/>
+        <path d="M118 242 Q150 256 182 242 L183 254 Q150 268 117 254 Z" fill="{{cd}}"/>` },
+      { name: 'Pleated Skirt', zh: '百褶裙', emoji: '🌷', svg: `
+        <path d="M118 242 L102 314 Q150 330 198 314 L182 242 Q150 256 118 242 Z" fill="{{c}}"/>
+        <g stroke="{{cd}}" stroke-width="3" fill="none">
+          <path d="M133 250 L124 318"/><path d="M150 255 L150 324"/><path d="M167 250 L176 318"/>
+        </g>
+        <path d="M118 242 Q150 256 182 242 L183 254 Q150 268 117 254 Z" fill="{{cd}}"/>` },
+      { name: 'Shorts', zh: '短褲', emoji: '🩳', svg: `
+        <path d="M118 242 L110 298 Q124 304 139 299 L148 264 L152 264 L161 299 Q176 304 190 298 L182 242 Q150 256 118 242 Z" fill="{{c}}"/>
+        <path d="M118 242 Q150 256 182 242 L183 252 Q150 266 117 252 Z" fill="{{cd}}"/>
+        <circle cx="150" cy="258" r="3" fill="{{cd}}"/>` },
+    ]
+  },
+  {
+    id: 'shoes', name: 'Shoes', zh: '鞋子', emoji: '👟',
+    layer: 'L-shoes', colors: COLORS, def: '#4fc3f7',
+    items: [
+      { name: 'Sneakers', zh: '球鞋', emoji: '👟', svg: `
+        <g>
+          <path d="M124 458 Q124 437 137 437 Q150 437 150 458 L150 462 Q137 468 124 462 Z" fill="{{c}}"/>
+          <path d="M124 456 L150 456 L150 462 Q137 468 124 462 Z" fill="#fff"/>
+          <circle cx="137" cy="447" r="3" fill="#fff"/>
+          <path d="M150 458 Q150 437 163 437 Q176 437 176 458 L176 462 Q163 468 150 462 Z" fill="{{c}}"/>
+          <path d="M150 456 L176 456 L176 462 Q163 468 150 462 Z" fill="#fff"/>
+          <circle cx="163" cy="447" r="3" fill="#fff"/>
+        </g>` },
+      { name: 'Ballet Flats', zh: '娃娃鞋', emoji: '🥿', svg: `
+        <ellipse cx="137" cy="456" rx="13" ry="9" fill="{{c}}"/>
+        <ellipse cx="163" cy="456" rx="13" ry="9" fill="{{c}}"/>
+        <path d="M131 450 L137 453 L143 450" stroke="{{cd}}" stroke-width="2.5" fill="none"/>
+        <path d="M157 450 L163 453 L169 450" stroke="{{cd}}" stroke-width="2.5" fill="none"/>` },
+      { name: 'Boots', zh: '靴子', emoji: '👢', svg: `
+        <rect x="126" y="406" width="23" height="52" rx="8" fill="{{c}}"/>
+        <rect x="151" y="406" width="23" height="52" rx="8" fill="{{c}}"/>
+        <rect x="126" y="406" width="23" height="10" rx="5" fill="{{cd}}"/>
+        <rect x="151" y="406" width="23" height="10" rx="5" fill="{{cd}}"/>
+        <path d="M125 454 L150 454 L150 463 Q136 468 125 463 Z" fill="{{cd}}"/>
+        <path d="M150 454 L175 454 L175 463 Q161 468 150 463 Z" fill="{{cd}}"/>` },
+      { name: 'Sandals', zh: '涼鞋', emoji: '👡', svg: `
+        <path d="M124 458 L150 458 L150 464 Q137 469 124 464 Z" fill="{{cd}}"/>
+        <path d="M150 458 L176 458 L176 464 Q163 469 150 464 Z" fill="{{cd}}"/>
+        <path d="M127 458 Q137 446 147 458" stroke="{{c}}" stroke-width="4.5" fill="none"/>
+        <path d="M153 458 Q163 446 173 458" stroke="{{c}}" stroke-width="4.5" fill="none"/>` },
+    ]
+  },
+  {
+    id: 'acc', name: 'Extras', zh: '配件', emoji: '🪄',
+    layer: 'L-acc', layerBack: 'L-accback', colors: COLORS, def: '#ff6fa5', multi: true,
+    items: [
+      { name: 'Glasses', zh: '眼鏡', emoji: '👓', svg: `
+        <g fill="none" stroke="{{c}}" stroke-width="3.5">
+          <circle cx="133" cy="100" r="12"/><circle cx="167" cy="100" r="12"/>
+          <path d="M145 99 Q150 95 155 99"/><path d="M121 97 L107 93"/><path d="M179 97 L193 93"/>
+        </g>` },
+      { name: 'Necklace', zh: '項鍊', emoji: '📿', svg: `
+        <path d="M137 166 Q150 182 163 166" stroke="#f0c75e" stroke-width="3" fill="none"/>
+        <path d="M150 180 c-2-4.5-9-3.5-9 1.5 c0 4.5 9 9 9 9 c0 0 9-4.5 9-9 c0-5-7-6-9-1.5 z" fill="{{c}}"/>` },
+      { name: 'Handbag', zh: '小提包', emoji: '👜', svg: `
+        <path d="M203 254 Q211 240 219 254" stroke="{{cd}}" stroke-width="3.5" fill="none"/>
+        <rect x="192" y="252" width="36" height="27" rx="10" fill="{{c}}"/>
+        <circle cx="210" cy="262" r="3.5" fill="{{cd}}"/>` },
+      { name: 'Magic Wand', zh: '魔法棒', emoji: '🪄', svg: `
+        <line x1="101" y1="258" x2="80" y2="216" stroke="#b88646" stroke-width="5" stroke-linecap="round"/>
+        <path d="M78 198 L82 208 L93 208 L84 215 L88 226 L78 219 L68 226 L72 215 L63 208 L74 208 Z" fill="{{c}}"/>
+        <g fill="{{c}}" opacity=".8">
+          <path d="M60 190 l2 5 5 2 -5 2 -2 5 -2-5 -5-2 5-2 z"/>
+          <path d="M96 188 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6-4 -4-1.6 4-1.6 z"/>
+        </g>` },
+      { name: 'Cat Ears', zh: '貓耳朵', emoji: '🐱', svg: `
+        <path d="M114 72 L106 38 L139 56 Z" fill="{{c}}"/>
+        <path d="M186 72 L194 38 L161 56 Z" fill="{{c}}"/>
+        <path d="M116 64 L112 47 L128 56 Z" fill="#ffb3ba"/>
+        <path d="M184 64 L188 47 L172 56 Z" fill="#ffb3ba"/>` },
+      { name: 'Fairy Wings', zh: '小翅膀', emoji: '🦋', back: `
+        <g opacity=".85">
+          <ellipse cx="103" cy="190" rx="30" ry="44" fill="{{c}}" transform="rotate(18 103 190)"/>
+          <ellipse cx="197" cy="190" rx="30" ry="44" fill="{{c}}" transform="rotate(-18 197 190)"/>
+          <ellipse cx="112" cy="238" rx="18" ry="26" fill="{{c}}" transform="rotate(30 112 238)" opacity=".8"/>
+          <ellipse cx="188" cy="238" rx="18" ry="26" fill="{{c}}" transform="rotate(-30 188 238)" opacity=".8"/>
+          <g fill="#fff" opacity=".7">
+            <circle cx="100" cy="180" r="5"/><circle cx="200" cy="180" r="5"/>
+            <circle cx="110" cy="210" r="3.5"/><circle cx="190" cy="210" r="3.5"/>
+          </g>
+        </g>`, svg: `` },
+    ]
+  },
+];
+
+// ---------------- game state ----------------
+let state = {};
+function defaultState() {
+  const s = {};
+  for (const c of CATS) s[c.id] = { sel: c.multi ? [] : 0, color: c.def };
+  return s;
+}
+
+let activeCat = 'hair';
+
+// ---------------- drawing ----------------
+function paint(svg, color) {
+  return svg.replace(/\{\{cd\}\}/g, dk(color)).replace(/\{\{c\}\}/g, color);
+}
+
+function renderDoll() {
+  for (const c of CATS) {
+    const st = state[c.id];
+    const picked = c.multi ? st.sel.map(i => c.items[i]) : [c.items[st.sel]];
+    let front = '', back = '';
+    for (const it of picked) {
+      if (!it) continue;
+      front += it.svg || '';
+      back += it.back || '';
+    }
+    document.getElementById(c.layer).innerHTML = paint(front, st.color);
+    if (c.layerBack) document.getElementById(c.layerBack).innerHTML = paint(back, st.color);
+  }
+  saveGame();
+}
+
+// ---------------- wardrobe panel ----------------
+function renderTabs() {
+  $('#tabs').innerHTML = CATS.map(c =>
+    `<button data-cat="${c.id}" class="${c.id === activeCat ? 'on' : ''}">${c.emoji} ${c.name} ${c.zh}</button>`
+  ).join('');
+}
+
+function renderItems() {
+  const c = CATS.find(x => x.id === activeCat);
+  const st = state[c.id];
+  $('#items').innerHTML = c.items.map((it, i) => {
+    const on = c.multi ? st.sel.includes(i) : st.sel === i;
+    return `<button data-i="${i}" class="${on ? 'on' : ''}">
+      <span class="em">${it.emoji}</span><span class="nm">${it.name}<br>${it.zh}</span>
+    </button>`;
+  }).join('');
+
+  if (c.colors) {
+    $('#colorsWrap').style.display = '';
+    $('#colors').innerHTML = c.colors.map(col =>
+      `<button data-col="${col}" class="${col === st.color ? 'on' : ''}" style="background:${col}"></button>`
+    ).join('');
+  } else {
+    $('#colorsWrap').style.display = 'none';
+  }
+}
+
+// ---------------- fun extras ----------------
+let actx;
+function pop(freq) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq || 480 + Math.random() * 420;
+    g.gain.setValueAtTime(.12, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .18);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + .2);
+  } catch (e) { /* sound is optional */ }
+}
+
+function confetti() {
+  const emojis = ['🎀','⭐','💖','✨','🌸','🦋','🍬'];
+  for (let k = 0; k < 14; k++) {
+    const sp = document.createElement('span');
+    sp.className = 'confetti';
+    sp.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    sp.style.left = (5 + Math.random() * 90) + '%';
+    sp.style.animationDelay = (Math.random() * .4) + 's';
+    $('#stage').appendChild(sp);
+    setTimeout(() => sp.remove(), 2200);
+  }
+}
+
+function randomOutfit() {
+  for (const c of CATS) {
+    const st = state[c.id];
+    if (c.multi) {
+      // wear 1 or 2 random extras
+      const n = 1 + Math.floor(Math.random() * 2);
+      const pool = c.items.map((_, i) => i).sort(() => Math.random() - .5);
+      st.sel = pool.slice(0, n);
+    } else {
+      st.sel = Math.floor(Math.random() * c.items.length);
+    }
+    if (c.colors) st.color = c.colors[Math.floor(Math.random() * c.colors.length)];
+  }
+  renderDoll(); renderItems();
+  confetti(); pop(700);
+}
+
+function savePicture() {
+  const svg = $('#doll');
+  const data = new XMLSerializer().serializeToString(svg);
+  const url = URL.createObjectURL(new Blob([data], { type: 'image/svg+xml;charset=utf-8' }));
+  const img = new Image();
+  img.onload = () => {
+    const cv = document.createElement('canvas');
+    cv.width = 600; cv.height = 1040;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    const a = document.createElement('a');
+    a.download = 'my-dress-up.png';
+    a.href = cv.toDataURL('image/png');
+    a.click();
+  };
+  img.src = url;
+  pop(900);
+}
+
+// ---------------- remember the outfit ----------------
+function saveGame() {
+  try { localStorage.setItem('dressup-save', JSON.stringify(state)); } catch (e) {}
+}
+function loadGame() {
+  try {
+    const raw = localStorage.getItem('dressup-save');
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    for (const c of CATS) {
+      if (!saved[c.id]) continue;
+      const st = saved[c.id];
+      const ok = c.multi
+        ? Array.isArray(st.sel) && st.sel.every(i => c.items[i])
+        : Number.isInteger(st.sel) && c.items[st.sel];
+      if (ok) state[c.id] = { sel: st.sel, color: st.color || c.def };
+    }
+  } catch (e) {}
+}
+
+// ---------------- clicks ----------------
+$('#tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  activeCat = b.dataset.cat;
+  renderTabs(); renderItems(); pop(520);
+});
+
+$('#items').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const c = CATS.find(x => x.id === activeCat);
+  const i = +b.dataset.i;
+  const st = state[c.id];
+  if (c.multi) {
+    st.sel = st.sel.includes(i) ? st.sel.filter(x => x !== i) : [...st.sel, i];
+  } else {
+    st.sel = i;
+  }
+  renderDoll(); renderItems(); pop();
+});
+
+$('#colors').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state[activeCat].color = b.dataset.col;
+  renderDoll(); renderItems(); pop();
+});
+
+$('#btnRandom').addEventListener('click', randomOutfit);
+$('#btnSave').addEventListener('click', savePicture);
+$('#btnReset').addEventListener('click', () => {
+  state = defaultState();
+  try { localStorage.removeItem('dressup-save'); } catch (e) {}
+  renderDoll(); renderItems(); pop(300);
+});
+
+// ---------------- start! ----------------
+state = defaultState();
+loadGame();
+renderTabs();
+renderItems();
+renderDoll();
+</script>
+</body>
+</html>
