@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎮 My Games 我們的小遊戲 🎮</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Microsoft JhengHei", sans-serif;
+    background: linear-gradient(160deg, #ffe9f3 0%, #e6f3ff 55%, #fff7d9 100%);
+    min-height: 100vh;
+    color: #5a4a6a;
+  }
+  header { text-align: center; padding: 28px 16px 8px; }
+  header h1 { margin: 0; font-size: 34px; color: #e75a9c; text-shadow: 2px 2px 0 #fff; }
+  header p { margin: 8px 0 0; font-size: 15px; color: #9b7fb8; line-height: 1.6; }
+
+  main {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 18px 16px 40px;
+  }
+  #games {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 22px;
+  }
+  .game {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 22px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 8px 24px rgba(180, 120, 200, .22);
+    transition: transform .12s, box-shadow .12s;
+  }
+  .game:hover { transform: translateY(-5px); box-shadow: 0 14px 30px rgba(180, 120, 200, .34); }
+  .game:active { transform: translateY(-1px); }
+  .shot {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    object-position: top center;
+    background: #f6f0ff;
+    display: block;
+  }
+  .game .body { padding: 14px 16px 16px; }
+  .game h2 { margin: 0; font-size: 20px; color: #d6427f; }
+  .game .desc { margin: 6px 0 0; font-size: 13px; color: #7a6a8a; line-height: 1.5; }
+  .game .play {
+    display: inline-block;
+    margin-top: 12px;
+    background: #ff8fb3;
+    color: #fff;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 14px;
+    box-shadow: 0 3px 0 #d6427f;
+  }
+  footer { text-align: center; font-size: 12px; color: #b8a7c9; padding: 8px 16px 28px; }
+  footer a { color: #9b7fb8; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎮 My Games 我們的小遊戲 🎮</h1>
+  <p>Little games we build together as a family — simple, colorful, made with love.<br>
+     和女兒一起做的小遊戲 — 簡單、繽紛、充滿愛 ❤️ &nbsp;點一個開始玩！</p>
+</header>
+
+<main>
+  <div id="games"></div>
+</main>
+
+<footer>
+  Made with ❤️ — <a href="https://github.com/JavisOfWeiYen/my_games">source on GitHub</a>
+</footer>
+
+<script>
+// ============================================================
+//  Game gallery. To add a NEW game later:
+//   1. Put the game in its own folder with an index.html
+//      and a screenshot.png inside that folder.
+//   2. Add one entry to the GAMES list below.
+//  The card shows <folder>/screenshot.png and links to
+//  <folder>/index.html — that's it!
+// ============================================================
+const GAMES = [
+  {
+    folder: 'dress-up-studio',
+    title: '✨ Dress-Up Studio 換裝小遊戲',
+    desc: 'Dress up your doll — hair, hats, clothes, shoes, accessories, every piece in any color! 幫娃娃換裝，每件都能換色！',
+  },
+  {
+    folder: 'tetris',
+    title: '🧱 Block Drop 方塊掉掉樂',
+    desc: 'A cute Tetris! Stack the falling blocks and clear full rows. 可愛版俄羅斯方塊，堆方塊、消滿行！',
+  },
+];
+
+document.getElementById('games').innerHTML = GAMES.map(g => `
+  <a class="game" href="${g.folder}/index.html">
+    <img class="shot" src="${g.folder}/screenshot.png" alt="${g.title}" loading="lazy">
+    <div class="body">
+      <h2>${g.title}</h2>
+      <p class="desc">${g.desc}</p>
+      <span class="play">▶ Play 開始玩</span>
+    </div>
+  </a>
+`).join('');
+</script>
+</body>
+</html>
