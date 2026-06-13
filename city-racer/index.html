@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🏎️ City Racer 城市賽車 🏎️</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Comic Sans MS", "Chalkboard SE", "Microsoft JhengHei", sans-serif;
+    background: #2a2a3a;
+    color: #5a4a6a;
+  }
+  #game { position: fixed; inset: 0; }
+  #view { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ---------- top toolbar ---------- */
+  #bar {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; z-index: 5;
+  }
+  #bar button {
+    border: none; border-radius: 14px; padding: 8px 12px;
+    font-family: inherit; font-size: 13px; font-weight: bold; color: #fff;
+    cursor: pointer; box-shadow: 0 3px 0 rgba(0,0,0,.25);
+    background: rgba(120,100,150,.9); backdrop-filter: blur(2px);
+  }
+  #bar button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.25); }
+  #bRace { background: #ff8fb3; }
+  #bFree { background: #7bd88f; }
+
+  /* ---------- HUD ---------- */
+  .hud { position: absolute; z-index: 4; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6); pointer-events: none; }
+  #speedo { left: 14px; bottom: 14px; text-align: center; }
+  #speedo .num { font-size: 46px; font-weight: bold; line-height: 1; }
+  #speedo .unit { font-size: 14px; opacity: .85; }
+  #raceinfo { right: 14px; top: 10px; text-align: right; font-size: 14px; line-height: 1.5; }
+  #raceinfo .big { font-size: 24px; font-weight: bold; }
+  #raceinfo .lap { color: #ffd6e7; }
+  #minimap {
+    position: absolute; right: 12px; bottom: 12px; z-index: 4;
+    width: 150px; height: 150px; border-radius: 14px;
+    background: rgba(40,40,60,.55); box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+
+  /* ---------- touch controls ---------- */
+  #pad { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+  #pad .grp { position: absolute; bottom: 90px; display: flex; gap: 14px; pointer-events: none; }
+  #pad .left  { left: 18px; }
+  #pad .right { right: 18px; flex-direction: column-reverse; align-items: center; }
+  #pad button {
+    pointer-events: auto;
+    width: 74px; height: 74px; border-radius: 50%;
+    border: none; font-size: 30px; color: #fff; cursor: pointer;
+    background: rgba(120,110,160,.55); box-shadow: 0 4px 0 rgba(0,0,0,.25);
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  #pad button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.25); }
+  #pad .gas   { background: rgba(123,216,143,.7); }
+  #pad .brake { background: rgba(255,143,179,.7); }
+  #pad .hand  { background: rgba(255,179,71,.75); width: 64px; height: 64px; font-size: 22px; }
+  #pad .small { font-size: 12px; }
+
+  /* ---------- overlay ---------- */
+  #overlay {
+    position: absolute; inset: 0; z-index: 9;
+    background: rgba(40,34,52,.84); color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 14px; padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: 34px; color: #ffd6e7; text-shadow: 2px 2px 0 #7a5; }
+  #overlay p { margin: 0; font-size: 15px; line-height: 1.7; max-width: 420px; }
+  #overlay .keys { font-size: 13px; opacity: .85; }
+  #overlay button {
+    border: none; border-radius: 16px; padding: 14px 26px;
+    font-family: inherit; font-size: 18px; font-weight: bold; color: #fff;
+    background: #ff8fb3; cursor: pointer; box-shadow: 0 4px 0 #d6427f;
+  }
+  #overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #d6427f; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="view"></canvas>
+
+  <div id="bar">
+    <button id="bRace">🏁 Race 競速</button>
+    <button id="bFree">🚗 Free 探索</button>
+    <button id="bReset">↺ Reset</button>
+    <button id="bPause">⏸</button>
+  </div>
+
+  <div class="hud" id="speedo"><div class="num" id="kmh">0</div><div class="unit">km/h</div></div>
+  <div class="hud" id="raceinfo"></div>
+  <canvas id="minimap" width="150" height="150"></canvas>
+
+  <div id="pad">
+    <div class="grp left">
+      <button id="bLeft">◀</button>
+      <button id="bRight">▶</button>
+    </div>
+    <div class="grp right">
+      <button class="gas"   id="bGas">▲</button>
+      <button class="brake" id="bBrake">▼</button>
+      <button class="hand"  id="bHand"><span class="small">手煞</span></button>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <h1>🏎️ City Racer 城市賽車</h1>
+    <p>Drive around the city! Real momentum — tap the <b>handbrake</b> to drift around corners. 在城市裡開車兜風！按<b>手煞車</b>可以甩尾過彎。</p>
+    <p>🏁 <b>Race</b> times your laps around 8 checkpoints. 競速模式會計時繞過 8 個檢查點的單圈成績。</p>
+    <p class="keys">⌨️ Keyboard: W/↑ gas · S/↓ brake · A/D ←/→ steer · Space handbrake · R reset · P pause<br>📱 Phone: use the on-screen buttons, or drag on the road.</p>
+    <button id="ovBtn">▶ Start 開始</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  City Racer — a top-down driving sim.
+//  The car has real momentum: its velocity and its facing
+//  direction are separate, so it can slide and drift. Pull the
+//  handbrake to break rear grip and power-slide round corners.
+//  Want to tinker? The PHYSICS constants below control the feel.
+// ============================================================
+
+const $ = s => document.querySelector(s);
+const view = $('#view'), ctx = view.getContext('2d');
+const mini = $('#minimap'), mctx = mini.getContext('2d');
+
+// ---------------- world layout ----------------
+const GRID = 7;            // number of road lines (0..6)
+const BLOCK = 360;         // distance between roads
+const ROAD = 96;           // road width
+const WORLD = (GRID - 1) * BLOCK;   // 2160 x 2160 city
+
+// city blocks: one building or park per interior cell
+const PASTELS = ['#f4b8d0','#b8d0f4','#cdeeb0','#ffe3a8','#d9c2f0','#ffc9b0','#bfeede','#f0c2d8'];
+const buildings = [];      // { x, y, w, h, color, roof, park }
+function buildCity() {
+  const M = 16;            // sidewalk margin
+  for (let i = 0; i < GRID - 1; i++) {
+    for (let j = 0; j < GRID - 1; j++) {
+      const x = i * BLOCK + ROAD / 2 + M;
+      const y = j * BLOCK + ROAD / 2 + M;
+      const w = BLOCK - ROAD - M * 2;
+      const h = BLOCK - ROAD - M * 2;
+      const park = Math.random() < 0.18;       // some cells are parks
+      const color = PASTELS[Math.floor(Math.random() * PASTELS.length)];
+      buildings.push({ x, y, w, h, color, roof: dk(color), park });
+    }
+  }
+}
+function dk(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => Math.round(v * 0.7);
+  return '#' + ((1 << 24) + (f(n >> 16 & 255) << 16) + (f(n >> 8 & 255) << 8) + f(n & 255)).toString(16).slice(1);
+}
+
+// ---------------- checkpoints (race circuit) ----------------
+// grid intersections forming a loop around the city
+const CP_GRID = [[1,1],[3,1],[5,1],[5,3],[5,5],[3,5],[1,5],[1,3]];
+const CPS = CP_GRID.map(([gx, gy]) => ({ x: gx * BLOCK, y: gy * BLOCK }));
+const CP_R = 64;
+
+// ---------------- skid-mark layer (persistent world canvas) ----------------
+const marks = document.createElement('canvas');
+marks.width = WORLD; marks.height = WORLD;
+const mk = marks.getContext('2d');
+
+// ---------------- car ----------------
+const car = { x: 0, y: 0, a: 0, vx: 0, vy: 0 };
+function resetCar() {
+  car.x = CPS[0].x; car.y = CPS[0].y; car.a = 0; car.vx = 0; car.vy = 0;
+}
+
+// ---------------- PHYSICS (tweak the feel here) ----------------
+const ENGINE = 430;     // forward acceleration (px/s^2)
+const REVERSE = 230;    // reverse acceleration
+const BRAKE = 760;      // braking power
+const QDRAG = 0.0013;   // air drag -> sets top speed (~580 px/s)
+const ROLL = 1.6;       // rolling resistance when coasting
+const TURN = 3.3;       // steering rate (rad/s)
+const GRIP = 0.86;      // rear grip per frame (lower = more grip)
+const DRIFT_GRIP = 0.975; // grip while handbraking (higher = slides more)
+const SKID_AT = 78;     // lateral speed that leaves tire marks
+
+// ---------------- input ----------------
+const input = { gas: 0, brake: 0, left: 0, right: 0, hand: 0 };
+
+// ---------------- game state ----------------
+let mode = 'free';        // 'free' | 'race'
+let nextCP = 1, lap = 0, lapStart = 0, lapNow = 0, best = 0;
+let running = false, paused = false, started = false;
+let cam = { x: 0, y: 0 };
+let W = 0, H = 0, dpr = 1;
+
+best = +(localStorage.getItem('cityracer-best') || 0);
+
+// ---------------- sizing ----------------
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  view.width = W * dpr; view.height = H * dpr;
+  view.style.width = W + 'px'; view.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+// ---------------- physics step ----------------
+function step(dt) {
+  const cos = Math.cos(car.a), sin = Math.sin(car.a);
+  // decompose velocity into forward + lateral (sideways)
+  let vF = car.vx * cos + car.vy * sin;
+  let vL = -car.vx * sin + car.vy * cos;
+
+  // engine + brakes
+  if (input.gas)   vF += ENGINE * dt;
+  if (input.brake) vF += (vF > 0 ? -BRAKE : -REVERSE) * dt;
+
+  // resistance
+  vF -= Math.sign(vF) * vF * vF * QDRAG * dt;     // air drag (quadratic)
+  if (!input.gas && !input.brake) vF -= vF * ROLL * dt; // coasting slows down
+
+  // lateral grip: how much sideways speed is kept (handbrake = slide)
+  const grip = input.hand ? DRIFT_GRIP : GRIP;
+  vL *= Math.pow(grip, dt * 60);
+
+  // steering — needs some speed, reverses when backing up
+  const speed = Math.hypot(car.vx, car.vy);
+  let steer = input.right - input.left;
+  if (speed > 8) {
+    let turn = steer * TURN * dt * Math.min(1, speed / 90);
+    if (input.hand) turn *= 1.35;                 // sharper while drifting
+    if (vF < 0) turn = -turn;
+    car.a += turn;
+  }
+
+  // settle when nearly stopped
+  if (speed < 6 && !input.gas && !input.brake) { vF = 0; vL = 0; }
+
+  // recompose world velocity
+  const c2 = Math.cos(car.a), s2 = Math.sin(car.a);
+  car.vx = vF * c2 - vL * s2;
+  car.vy = vF * s2 + vL * c2;
+
+  // tire marks while sliding hard or handbraking at speed
+  if ((Math.abs(vL) > SKID_AT || (input.hand && speed > 40))) layMarks();
+
+  // move
+  car.x += car.vx * dt;
+  car.y += car.vy * dt;
+
+  collide();
+  // keep inside the world
+  car.x = Math.max(20, Math.min(WORLD - 20, car.x));
+  car.y = Math.max(20, Math.min(WORLD - 20, car.y));
+
+  checkpoints();
+}
+
+function layMarks() {
+  const cos = Math.cos(car.a), sin = Math.sin(car.a);
+  mk.fillStyle = 'rgba(40,38,48,.5)';
+  for (const side of [-9, 9]) {
+    const rx = car.x - cos * 14 - sin * side;
+    const ry = car.y - sin * 14 + cos * side;
+    mk.fillRect(rx - 2, ry - 2, 4, 4);
+  }
+}
+
+// circle (car) vs building rectangles
+function collide() {
+  const r = 15;
+  for (const b of buildings) {
+    if (b.park) continue;                          // parks are open
+    const nx = Math.max(b.x, Math.min(car.x, b.x + b.w));
+    const ny = Math.max(b.y, Math.min(car.y, b.y + b.h));
+    let dx = car.x - nx, dy = car.y - ny;
+    let d2 = dx * dx + dy * dy;
+    if (d2 < r * r) {
+      let d = Math.sqrt(d2);
+      let pnx, pny, push;
+      if (d > 0.001) { pnx = dx / d; pny = dy / d; push = r - d; }
+      else {                                       // center inside: push out nearest edge
+        const left = car.x - b.x, right = b.x + b.w - car.x;
+        const top = car.y - b.y, bot = b.y + b.h - car.y;
+        const m = Math.min(left, right, top, bot);
+        if (m === left)  { pnx = -1; pny = 0; } else if (m === right) { pnx = 1; pny = 0; }
+        else if (m === top) { pnx = 0; pny = -1; } else { pnx = 0; pny = 1; }
+        push = m + r;
+      }
+      car.x += pnx * push; car.y += pny * push;
+      const vdot = car.vx * pnx + car.vy * pny;
+      if (vdot < 0) { car.vx -= 1.3 * vdot * pnx; car.vy -= 1.3 * vdot * pny; }
+      car.vx *= 0.7; car.vy *= 0.7;                // lose speed in a crash
+    }
+  }
+}
+
+// ---------------- race / checkpoints ----------------
+function checkpoints() {
+  const cp = CPS[nextCP];
+  const dx = car.x - cp.x, dy = car.y - cp.y;
+  if (dx * dx + dy * dy < CP_R * CP_R) {
+    if (nextCP === 0) {                            // crossed the finish line
+      if (mode === 'race') {
+        const t = lapNow;
+        if (best === 0 || t < best) { best = t; try { localStorage.setItem('cityracer-best', Math.round(best)); } catch (e) {} }
+        lap++;
+      }
+      lapStart = perf; lapNow = 0;
+    }
+    nextCP = (nextCP + 1) % CPS.length;
+    beep(660);
+  }
+}
+
+function startRace() {
+  mode = 'race';
+  resetCar();
+  nextCP = 1; lap = 1; lapStart = perf; lapNow = 0;
+  hideOverlay();
+  beep(880);
+}
+function freeRoam() { mode = 'free'; nextCP = 1; hideOverlay(); }
+
+// ---------------- camera ----------------
+function updateCam() {
+  let cx = car.x - W / 2, cy = car.y - H / 2;
+  cam.x = W >= WORLD ? (WORLD - W) / 2 : Math.max(0, Math.min(WORLD - W, cx));
+  cam.y = H >= WORLD ? (WORLD - H) / 2 : Math.max(0, Math.min(WORLD - H, cy));
+}
+
+// ---------------- rendering ----------------
+function draw() {
+  updateCam();
+  // grass
+  ctx.fillStyle = '#9fd18f';
+  ctx.fillRect(0, 0, W, H);
+
+  drawRoads();
+
+  // buildings & parks (cull to view)
+  for (const b of buildings) {
+    if (b.x + b.w < cam.x || b.x > cam.x + W || b.y + b.h < cam.y || b.y > cam.y + H) continue;
+    const sx = b.x - cam.x, sy = b.y - cam.y;
+    if (b.park) {
+      ctx.fillStyle = '#8ec47e'; ctx.fillRect(sx, sy, b.w, b.h);
+      ctx.fillStyle = '#6fb0e8'; // little pond
+      ctx.beginPath(); ctx.ellipse(sx + b.w / 2, sy + b.h / 2, b.w * 0.22, b.h * 0.16, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#5a9e57';
+      for (const [tx, ty] of [[0.2,0.25],[0.8,0.3],[0.25,0.8],[0.78,0.75]]) {
+        ctx.beginPath(); ctx.arc(sx + b.w * tx, sy + b.h * ty, 13, 0, 7); ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = b.roof; ctx.fillRect(sx, sy, b.w, b.h);       // base/shadow
+      ctx.fillStyle = b.color; ctx.fillRect(sx + 4, sy + 4, b.w - 12, b.h - 12); // roof top
+      ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 2;
+      ctx.strokeRect(sx + 4, sy + 4, b.w - 12, b.h - 12);
+    }
+  }
+
+  drawMarks();
+  drawCheckpoints();
+  drawCar();
+  drawArrow();
+  drawMinimap();
+  updateHud();
+}
+
+function drawRoads() {
+  const x0 = Math.max(0, Math.floor(cam.x / BLOCK)), x1 = Math.min(GRID - 1, Math.ceil((cam.x + W) / BLOCK));
+  const y0 = Math.max(0, Math.floor(cam.y / BLOCK)), y1 = Math.min(GRID - 1, Math.ceil((cam.y + H) / BLOCK));
+  ctx.fillStyle = '#6d6f7a';
+  for (let i = x0; i <= x1; i++) ctx.fillRect(i * BLOCK - ROAD / 2 - cam.x, 0, ROAD, H);
+  for (let j = y0; j <= y1; j++) ctx.fillRect(0, j * BLOCK - ROAD / 2 - cam.y, W, ROAD);
+  // dashed center lines
+  ctx.strokeStyle = '#f6d96b'; ctx.lineWidth = 3; ctx.setLineDash([16, 18]);
+  ctx.beginPath();
+  for (let i = x0; i <= x1; i++) { const sx = i * BLOCK - cam.x; ctx.moveTo(sx, 0); ctx.lineTo(sx, H); }
+  for (let j = y0; j <= y1; j++) { const sy = j * BLOCK - cam.y; ctx.moveTo(0, sy); ctx.lineTo(W, sy); }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+
+function drawMarks() {
+  ctx.drawImage(marks, cam.x, cam.y, W, H, 0, 0, W, H);
+}
+
+function drawCheckpoints() {
+  for (let i = 0; i < CPS.length; i++) {
+    const cp = CPS[i], sx = cp.x - cam.x, sy = cp.y - cam.y;
+    if (sx < -90 || sx > W + 90 || sy < -90 || sy > H + 90) continue;
+    const isNext = (i === nextCP);
+    ctx.lineWidth = isNext ? 7 : 4;
+    ctx.strokeStyle = isNext ? '#ff5d8f' : 'rgba(255,255,255,.5)';
+    const pulse = isNext ? (4 + 4 * Math.sin(perf / 180)) : 0;
+    ctx.beginPath(); ctx.arc(sx, sy, CP_R - 8 + pulse, 0, 7); ctx.stroke();
+    if (isNext) {
+      ctx.fillStyle = 'rgba(255,93,143,.18)';
+      ctx.beginPath(); ctx.arc(sx, sy, CP_R - 8 + pulse, 0, 7); ctx.fill();
+    }
+    // a little flag number
+    ctx.fillStyle = isNext ? '#ff5d8f' : 'rgba(255,255,255,.7)';
+    ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🚩', sx, sy);
+  }
+}
+
+function drawCar() {
+  const sx = car.x - cam.x, sy = car.y - cam.y;
+  ctx.save();
+  ctx.translate(sx, sy); ctx.rotate(car.a);
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; rr(-19, -10, 40, 22, 6); ctx.fill();
+  // wheels
+  ctx.fillStyle = '#2b2b33';
+  ctx.fillRect(-15, -13, 8, 5); ctx.fillRect(7, -13, 8, 5);
+  ctx.fillRect(-15, 8, 8, 5);  ctx.fillRect(7, 8, 8, 5);
+  // body
+  ctx.fillStyle = '#ff5d6c'; rr(-20, -11, 40, 22, 7); ctx.fill();
+  ctx.fillStyle = '#e23b52'; rr(-20, -11, 8, 22, 7); ctx.fill();      // rear
+  // windshield + roof
+  ctx.fillStyle = '#bfe3ff'; rr(-2, -8, 12, 16, 3); ctx.fill();
+  ctx.fillStyle = '#eaf4ff'; rr(-12, -7, 10, 14, 3); ctx.fill();
+  // headlights
+  ctx.fillStyle = '#fff6c4'; ctx.fillRect(17, -8, 3, 4); ctx.fillRect(17, 4, 3, 4);
+  ctx.restore();
+}
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// arrow pointing to the next checkpoint when it's off-screen
+function drawArrow() {
+  const cp = CPS[nextCP], sx = cp.x - cam.x, sy = cp.y - cam.y;
+  const on = sx > 40 && sx < W - 40 && sy > 40 && sy < H - 40;
+  if (on) return;
+  const ang = Math.atan2(cp.y - car.y, cp.x - car.x);
+  const px = car.x - cam.x + Math.cos(ang) * 70;
+  const py = car.y - cam.y + Math.sin(ang) * 70;
+  ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+  ctx.fillStyle = '#ff5d8f';
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -11); ctx.lineTo(-10, 11); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawMinimap() {
+  const s = mini.width / WORLD;
+  mctx.clearRect(0, 0, mini.width, mini.height);
+  mctx.fillStyle = 'rgba(120,140,120,.35)'; mctx.fillRect(0, 0, mini.width, mini.height);
+  // roads
+  mctx.strokeStyle = 'rgba(255,255,255,.35)'; mctx.lineWidth = 2;
+  mctx.beginPath();
+  for (let i = 0; i < GRID; i++) {
+    mctx.moveTo(i * BLOCK * s, 0); mctx.lineTo(i * BLOCK * s, mini.height);
+    mctx.moveTo(0, i * BLOCK * s); mctx.lineTo(mini.width, i * BLOCK * s);
+  }
+  mctx.stroke();
+  // checkpoints
+  for (let i = 0; i < CPS.length; i++) {
+    mctx.fillStyle = i === nextCP ? '#ff5d8f' : 'rgba(255,255,255,.6)';
+    mctx.beginPath(); mctx.arc(CPS[i].x * s, CPS[i].y * s, i === nextCP ? 5 : 3, 0, 7); mctx.fill();
+  }
+  // car
+  mctx.save(); mctx.translate(car.x * s, car.y * s); mctx.rotate(car.a);
+  mctx.fillStyle = '#ffe14d';
+  mctx.beginPath(); mctx.moveTo(6, 0); mctx.lineTo(-4, -4); mctx.lineTo(-4, 4); mctx.closePath(); mctx.fill();
+  mctx.restore();
+}
+
+function fmt(ms) {
+  if (!ms) return '--:--';
+  const t = ms / 1000, m = Math.floor(t / 60), s = (t % 60).toFixed(2).padStart(5, '0');
+  return m + ':' + s;
+}
+function updateHud() {
+  $('#kmh').textContent = Math.round(Math.hypot(car.vx, car.vy) * 0.26);
+  if (mode === 'race') {
+    $('#raceinfo').innerHTML =
+      '<div class="lap">LAP 第 ' + lap + ' 圈</div>' +
+      '<div class="big">' + fmt(lapNow) + '</div>' +
+      '<div>Best 最佳 ' + fmt(best) + '</div>' +
+      '<div>Next 下一點 #' + (nextCP + 1) + '</div>';
+  } else {
+    $('#raceinfo').innerHTML = '<div class="lap">🚗 Free roam 自由探索</div><div>Best lap 最佳單圈 ' + fmt(best) + '</div>';
+  }
+}
+
+// ---------------- game loop ----------------
+let perf = 0, lastT = 0;
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (!lastT) lastT = t;
+  let dt = (t - lastT) / 1000; lastT = t;
+  perf = t;
+  if (!running || paused) { draw(); return; }
+  dt = Math.min(dt, 0.033);
+  if (mode === 'race') lapNow = perf - lapStart;
+  step(dt);
+  draw();
+}
+
+// ---------------- overlay ----------------
+function showOverlay(html) { if (html) $('#overlay').querySelector('p').innerHTML = html; $('#overlay').classList.remove('hidden'); }
+function hideOverlay() { $('#overlay').classList.add('hidden'); running = true; paused = false; started = true; }
+function togglePause() {
+  if (!started) return;
+  paused = !paused;
+  if (paused) { $('#overlay').classList.remove('hidden'); $('#overlay').querySelector('h1').textContent = '⏸ Paused 暫停'; }
+  else { $('#overlay').classList.add('hidden'); }
+}
+
+// ---------------- sound ----------------
+let actx;
+function beep(freq) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'triangle'; o.frequency.value = freq;
+    g.gain.setValueAtTime(.06, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .15);
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + .16);
+  } catch (e) {}
+}
+
+// ---------------- keyboard ----------------
+const keymap = {
+  ArrowUp: 'gas', w: 'gas', W: 'gas',
+  ArrowDown: 'brake', s: 'brake', S: 'brake',
+  ArrowLeft: 'left', a: 'left', A: 'left',
+  ArrowRight: 'right', d: 'right', D: 'right',
+  ' ': 'hand',
+};
+addEventListener('keydown', e => {
+  if (e.key === 'r' || e.key === 'R') { resetCar(); if (mode === 'race') { nextCP = 1; lap = 1; lapStart = perf; lapNow = 0; } e.preventDefault(); return; }
+  if (e.key === 'p' || e.key === 'P') { togglePause(); e.preventDefault(); return; }
+  if (e.key === 'Enter' && !started) { freeRoam(); return; }
+  const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
+});
+addEventListener('keyup', e => { const k = keymap[e.key]; if (k) { input[k] = 0; e.preventDefault(); } });
+
+// ---------------- touch buttons ----------------
+function hold(sel, key) {
+  const el = $(sel);
+  const on = e => { e.preventDefault(); input[key] = 1; };
+  const off = e => { e.preventDefault(); input[key] = 0; };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+}
+hold('#bGas', 'gas'); hold('#bBrake', 'brake');
+hold('#bLeft', 'left'); hold('#bRight', 'right'); hold('#bHand', 'hand');
+
+// drag on the road to steer + go (simple touch driving)
+let drag = null;
+view.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; });
+view.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - (W / 2), dy = e.clientY - (H * 0.8);
+  input.gas = 1;
+  input.left = dx < -24 ? 1 : 0;
+  input.right = dx > 24 ? 1 : 0;
+});
+view.addEventListener('pointerup', () => { drag = null; input.gas = 0; input.left = 0; input.right = 0; });
+
+// ---------------- buttons ----------------
+$('#bRace').addEventListener('click', startRace);
+$('#bFree').addEventListener('click', freeRoam);
+$('#bReset').addEventListener('click', () => { resetCar(); if (mode === 'race') { nextCP = 1; lap = 1; lapStart = perf; lapNow = 0; } });
+$('#bPause').addEventListener('click', togglePause);
+$('#ovBtn').addEventListener('click', () => { if (paused) togglePause(); else freeRoam(); });
+
+// ---------------- start! ----------------
+buildCity();
+resetCar();
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

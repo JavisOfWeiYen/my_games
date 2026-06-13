@@ -11,6 +11,7 @@ No install needed — they run right in your browser (computer, tablet, or phone
 |---|---|---|
 | ✨ **Dress-Up Studio 換裝小遊戲** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/dress-up-studio/) | Dress up your doll! Hair, hats, clothes, skirts, shoes, accessories — every piece in any color. Featuring an Ice Queen ❄️ outfit. 幫娃娃換裝:髮型、帽子、衣服、裙子、鞋子、配件通通可以換,還有冰雪女王造型! |
 | 🧱 **Block Drop 方塊掉掉樂** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/tetris/) | A cute Tetris! Stack the falling blocks and clear full rows. Keyboard or touch/swipe controls, next + hold pieces, levels, and a saved high score. 可愛版俄羅斯方塊:堆方塊、消滿行,支援鍵盤與手機滑動,有預告/暫存方塊、等級與最高分紀錄! |
+| 🏎️ **City Racer 城市賽車** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/city-racer/) | A top-down driving sim with real momentum — drift round corners with the handbrake, then race the 8-checkpoint circuit for your best lap. Keyboard or touch. 俯視角駕駛模擬,有真實慣性:按手煞甩尾過彎,挑戰 8 個檢查點繞圈賽刷新單圈紀錄,支援鍵盤與觸控! |
 
 ![Dress-Up Studio screenshot](dress-up-studio/screenshot.png)
 
@@ -31,6 +32,15 @@ No install needed — they run right in your browser (computer, tablet, or phone
 - 👻 **Ghost piece 落點提示** — see where your block will land 看得到方塊會落在哪
 - 🚀 **Levels & speed-up 等級加速** — every 10 lines it gets faster 每 10 行越來越快
 - 🏆 **High score 最高分** — your best is remembered 自動記住最高分
+
+## 🏎️ City Racer Highlights 遊戲特色
+
+- 🌆 **Open city map 開放城市地圖** — roads, blocks, and parks to roam 馬路、街區、公園自由探索
+- 💨 **Real momentum 真實慣性** — the car slides and carries speed like a sim 車會滑動、有速度感,像模擬器
+- 🛞 **Handbrake drifting 手煞甩尾** — break rear grip and power-slide corners 後輪打滑,帥氣甩尾過彎
+- 🏁 **Checkpoint races 檢查點繞圈賽** — lap timing with a saved best lap 計時繞圈,記住最佳單圈
+- 🧭 **Arrow + minimap 箭頭與小地圖** — always know where to go 隨時知道往哪開
+- ⌨️📱 **Keyboard & touch 鍵盤與觸控** — buttons or drag-to-drive on phones 手機可用按鈕或滑動駕駛
 
 ## 🚀 Run Locally 在自己電腦上玩
 
