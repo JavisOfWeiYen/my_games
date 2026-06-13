@@ -10,6 +10,7 @@ No install needed — they run right in your browser (computer, tablet, or phone
 | Game 遊戲 | Play 遊玩連結 | About 介紹 |
 |---|---|---|
 | ✨ **Dress-Up Studio 換裝小遊戲** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/dress-up-studio/) | Dress up your doll! Hair, hats, clothes, skirts, shoes, accessories — every piece in any color. Featuring an Ice Queen ❄️ outfit. 幫娃娃換裝:髮型、帽子、衣服、裙子、鞋子、配件通通可以換,還有冰雪女王造型! |
+| 🧱 **Block Drop 方塊掉掉樂** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/tetris/) | A cute Tetris! Stack the falling blocks and clear full rows. Keyboard or touch/swipe controls, next + hold pieces, levels, and a saved high score. 可愛版俄羅斯方塊:堆方塊、消滿行,支援鍵盤與手機滑動,有預告/暫存方塊、等級與最高分紀錄! |
 
 ![Dress-Up Studio screenshot](dress-up-studio/screenshot.png)
 
@@ -22,6 +23,15 @@ No install needed — they run right in your browser (computer, tablet, or phone
 - 📷 **Save your look 保存造型** — download your creation as a picture 把作品存成圖片
 - 💾 **Auto-save 自動記憶** — your outfit is still there next time 下次打開造型還在
 
+## 🧱 Block Drop Highlights 遊戲特色
+
+- 🎮 **Classic falling blocks 經典掉落方塊** — all 7 shapes in candy-pastel colors 七種粉彩方塊
+- ⌨️ **Keyboard & touch 鍵盤與觸控** — arrow keys, or tap and swipe on phones 方向鍵,或手機點按/滑動
+- 👀 **Next & Hold 預告與暫存** — plan ahead and stash a piece for later 看下一個、把方塊暫存起來
+- 👻 **Ghost piece 落點提示** — see where your block will land 看得到方塊會落在哪
+- 🚀 **Levels & speed-up 等級加速** — every 10 lines it gets faster 每 10 行越來越快
+- 🏆 **High score 最高分** — your best is remembered 自動記住最高分
+
 ## 🚀 Run Locally 在自己電腦上玩
 
 Everything is a single HTML file — no installs, no build tools:
@@ -30,8 +40,10 @@ Everything is a single HTML file — no installs, no build tools:
 git clone https://github.com/JavisOfWeiYen/my_games.git
 ```
 
-Then double-click `dress-up-studio/index.html`. That's it!
-下載後直接點兩下 `dress-up-studio/index.html` 就能玩。
+Then double-click any game's `index.html` (e.g. `dress-up-studio/index.html`
+or `tetris/index.html`). That's it!
+下載後直接點兩下任一遊戲的 `index.html`(例如 `dress-up-studio/index.html`
+或 `tetris/index.html`)就能玩。
 
 ## 🛠️ How It's Made 怎麼做的
 
