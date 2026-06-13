@@ -18,9 +18,8 @@ completely — full rows disappear and you score points!
 | Key 按鍵 | Action 動作 |
 |---|---|
 | ← → | Move 左右移動 |
-| ↑ or Z | Rotate 旋轉 |
-| ↓ | Soft drop 慢慢往下 |
-| Space 空白鍵 | Hard drop 直接落下 |
+| Space 空白鍵 | Rotate 旋轉 |
+| ↓ | Hard drop 直接落到底 |
 | C | Hold 暫存方塊 |
 | P | Pause 暫停 |
 
