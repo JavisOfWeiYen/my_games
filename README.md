@@ -11,7 +11,7 @@ No install needed — they run right in your browser (computer, tablet, or phone
 |---|---|---|
 | ✨ **Dress-Up Studio 換裝小遊戲** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/dress-up-studio/) | Dress up your doll! Hair, hats, clothes, skirts, shoes, accessories — every piece in any color. Featuring an Ice Queen ❄️ outfit. 幫娃娃換裝:髮型、帽子、衣服、裙子、鞋子、配件通通可以換,還有冰雪女王造型! |
 | 🧱 **Block Drop 方塊掉掉樂** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/tetris/) | A cute Tetris! Stack the falling blocks and clear full rows. Keyboard or touch/swipe controls, next + hold pieces, levels, and a saved high score. 可愛版俄羅斯方塊:堆方塊、消滿行,支援鍵盤與手機滑動,有預告/暫存方塊、等級與最高分紀錄! |
-| 🏎️ **City Racer 城市賽車** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/city-racer/) | A top-down driving sim with real momentum — drift round corners with the handbrake, then race the 8-checkpoint circuit for your best lap. Keyboard or touch. 俯視角駕駛模擬,有真實慣性:按手煞甩尾過彎,挑戰 8 個檢查點繞圈賽刷新單圈紀錄,支援鍵盤與觸控! |
+| 🏎️ **City Racer 城市賽車** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/city-racer/) | A cockpit-view pseudo-3D racer — dashboard with speed + rev gauges and a steering wheel, racing a neon night highway past detailed traffic. Beat the clock to clear each level; it gets faster every time. Keyboard or touch. 車內視角賽車:儀表板有時速錶與轉速錶、還有方向盤,飆過霓虹夜間公路、閃避擬真車流,限時內衝過終點就晉級,每關更快,支援鍵盤與觸控! |
 
 ![Dress-Up Studio screenshot](dress-up-studio/screenshot.png)
 
@@ -35,12 +35,12 @@ No install needed — they run right in your browser (computer, tablet, or phone
 
 ## 🏎️ City Racer Highlights 遊戲特色
 
-- 🌆 **Open city map 開放城市地圖** — roads, blocks, and parks to roam 馬路、街區、公園自由探索
-- 💨 **Real momentum 真實慣性** — the car slides and carries speed like a sim 車會滑動、有速度感,像模擬器
-- 🛞 **Handbrake drifting 手煞甩尾** — break rear grip and power-slide corners 後輪打滑,帥氣甩尾過彎
-- 🏁 **Checkpoint races 檢查點繞圈賽** — lap timing with a saved best lap 計時繞圈,記住最佳單圈
-- 🧭 **Arrow + minimap 箭頭與小地圖** — always know where to go 隨時知道往哪開
-- ⌨️📱 **Keyboard & touch 鍵盤與觸控** — buttons or drag-to-drive on phones 手機可用按鈕或滑動駕駛
+- 🪟 **Cockpit view 車內視角** — sit in the driver's seat with the dashboard and half the wheel in view 坐在駕駛座,看得到儀表板與半個方向盤
+- 🎛️ **Live gauges 即時儀表** — a speedometer and a rev counter with needles, plus a gear readout 時速錶、轉速錶(指針會動)與檔位顯示
+- 🚗 **Detailed traffic 擬真車流** — cars and trucks with windows, mirrors and glowing tail lights to overtake 有車窗、後視鏡、發光尾燈的轎車與卡車可超越
+- ⏱️ **Timed levels 限時闖關** — reach the finish before time runs out to advance; each level is faster and busier 在時間內衝過終點就晉級,每關更快、車更多
+- 🌃 **Neon night city 霓虹夜城** — parallax skyline, moon, glowing rumble strips and roadside lights 視差天際線、月亮、發光路緣與路邊燈
+- ⌨️📱 **Keyboard & touch 鍵盤與觸控** — arrows/WASD or on-screen buttons 方向鍵/WASD 或螢幕按鈕
 
 ## 🚀 Run Locally 在自己電腦上玩
 

@@ -1,25 +1,29 @@
 # 🏎️ City Racer 城市賽車 🏎️
 
-A top-down driving simulator in a single file — no installs needed.
-俯視角的開車模擬遊戲，單一檔案、免安裝。
+A pseudo-3D racing game in a single file — no installs needed.
+車內第一人稱視角的賽車遊戲，單一檔案、免安裝。
 
 ## How to play 怎麼玩
 
 **Double-click `index.html`** and it opens in your browser. 用瀏覽器打開 `index.html` 就可以玩了！
 
-Drive around the city! The car has **real momentum** — it keeps sliding,
-so ease off and steer into corners. Pull the **handbrake** to break the
-rear wheels loose and **drift** around tight turns. 車子有真實的慣性會滑動，
-入彎要提早轉；按**手煞車**讓後輪打滑就能**甩尾**過彎！
+You sit **in the driver's seat** — dashboard, speed + rev gauges, and half
+the steering wheel in view — racing down a neon night highway. Hold the gas,
+lean into the curves, and overtake the traffic ahead without crashing.
+你坐在**駕駛座**裡：看得到儀表板、時速錶與轉速錶、還有半個方向盤，飆過霓虹夜間
+高速公路。催油門、順著彎道過彎、超越前車別撞上。
 
-### Two modes 兩種模式
+### Levels 關卡
 
-- 🚗 **Free 探索** — roam the whole city, no timer. 自由開車兜風，不計時。
-- 🏁 **Race 競速** — drive through the 8 checkpoints in order. Your lap is
-  timed and your **best lap** is saved. 依序開過 8 個檢查點，計算單圈時間並記住**最佳成績**。
+Each level gives you a **time limit to reach the finish line**. Make it in
+time and you advance to the next level — which is faster and has more traffic.
+Run out of time and it's **Game Over**. Your best level reached is saved.
+每一關都有**到達終點線的時間限制**：時間內衝過終點就晉級下一關（更快、車更多）；
+時間到還沒到終點就 **Game Over**。會記住你達到的最高關卡。
 
-A glowing ring 🚩 marks your next checkpoint, with an arrow and minimap to
-guide you. 發光的旗子是下一個檢查點，畫面有箭頭和小地圖帶路。
+The road is drawn with a classic "pseudo-3D" trick — flat road segments
+projected into the distance — so it runs smoothly anywhere, even on a phone.
+道路是用經典的 pseudo-3D 技巧畫出來的（把平面路段投影到遠方），所以到處都跑得很順，手機也行。
 
 ### Controls 操作
 
@@ -27,34 +31,41 @@ guide you. 發光的旗子是下一個檢查點，畫面有箭頭和小地圖帶
 
 | Key 按鍵 | Action 動作 |
 |---|---|
-| W / ↑ | Gas 油門 |
-| S / ↓ | Brake / reverse 煞車・倒車 |
+| W / ↑ | Accelerate 油門 |
+| S / ↓ | Brake 煞車 |
 | A / D or ← / → | Steer 轉向 |
-| Space 空白鍵 | Handbrake (drift!) 手煞車（甩尾！） |
-| R | Reset car 車子歸位 |
 | P | Pause 暫停 |
+| R | Restart 重新開始 |
 
-**Phone 手機** — use the on-screen buttons (steer, gas ▲, brake ▼, 手煞),
-or just **drag your finger** on the road to drive. 用畫面上的按鈕，或直接在馬路上**滑動手指**開車。
+**Phone 手機** — use the on-screen buttons: ◀ ▶ to steer, ▲ gas, ▼ brake.
+用畫面上的按鈕：◀ ▶ 轉向、▲ 油門、▼ 煞車。
+
+💡 Tip: lift off the gas before a sharp curve, and don't run onto the
+verge — going off-road scrubs your speed. 小技巧：急彎前放油門，別開到路肩，
+壓到草地會掉速。
 
 ## Make it your own! 自己改改看！
 
-Open `index.html` in a text editor and find the **PHYSICS** constants near
-the top of the `<script>`. 打開 `index.html`，找到 `<script>` 上方的 **PHYSICS** 區塊。
+Open `index.html` in a text editor and find the **CONFIG** block near the
+top of the `<script>`. 打開 `index.html`，找到 `<script>` 上方的 **CONFIG** 區塊。
 
 ```js
-const ENGINE = 430;       // how fast it speeds up 加速力
-const TURN   = 3.3;       // how sharply it steers 轉向靈敏度
-const GRIP   = 0.86;      // tire grip (lower = stickier) 抓地力
-const DRIFT_GRIP = 0.975; // grip while handbraking (higher = more slide) 甩尾滑度
+const MAXSPEED = SEG * 58;     // top speed 極速
+const CENTRIFUGAL = 0.32;      // how hard curves push you out 彎道甩出力
+const CAM_H = 1500;            // camera height 視角高度
+const FOV = 98;                // field of view 視野廣度
 ```
 
 Easy experiments 簡單的小實驗：
 
-- Make `ENGINE` bigger for a faster car. 把 `ENGINE` 調大，車更快。
-- Raise `DRIFT_GRIP` toward `0.99` for wild, slidey drifts. 把 `DRIFT_GRIP` 調高，甩尾更誇張。
-- Change `BLOCK` and `GRID` to resize the city. 改 `BLOCK`、`GRID` 改變城市大小。
-- Edit the `CP_GRID` list to move the race checkpoints around. 改 `CP_GRID` 移動賽道檢查點。
+- Raise `MAXSPEED` for a faster car. 把 `MAXSPEED` 調大車更快。
+- Make the levels easier/harder by editing `timeLimit()` (seconds per level).
+  改 `timeLimit()` 調整每關的限時，讓關卡更簡單或更難。
+- Edit `buildTrack()` to design your own course — add `curve()`, `hill()`,
+  `straight()` and `sCurves()`. 改 `buildTrack()` 設計自己的賽道。
+- Change the neon colours in `LIGHT` / `DARK` / `CAR_COLORS`. 改霓虹配色。
+- More traffic per level? Tweak the `TOTAL` formula inside `resetCars()`.
+  想要更多車流就改 `resetCars()` 裡的 `TOTAL` 公式。
 
 Save the file, refresh the browser, and your changes appear in the game!
 存檔、重新整理瀏覽器，改動就出現在遊戲裡了！
