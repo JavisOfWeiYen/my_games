@@ -104,12 +104,12 @@ const view = $('#view'), ctx = view.getContext('2d');
 
 // ===== 1. CONFIG =====
 const SEG = 200, RUMBLE = 5, ROAD_W = 2000, LANES = 3;
-const DRAW = 240, FOV = 98, CAM_H = 1000;  // lower camera = a grounded, in-car eye level
+const DRAW = 240, FOV = 98, CAM_H = 720;   // low, in-car eye level (you see cars' full rear)
 const HZN = 0.50;                          // horizon position (fraction of height)
 const CENTRIFUGAL = 0.32;
 const CAR_W = ROAD_W * 0.52;
 const cameraDepth = 1 / Math.tan((FOV / 2) * Math.PI / 180);
-const MAXSPEED = SEG * 58;
+const MAXSPEED = SEG * 64;       // top speed (shows as 200 km/h on the dial)
 const ACCEL = MAXSPEED / 5, BRAKE = -MAXSPEED, DECEL = -MAXSPEED / 5;
 const OFF_DECEL = -MAXSPEED / 1.6, OFF_LIMIT = MAXSPEED / 3.2;
 const playerZ = CAM_H * cameraDepth;
@@ -130,7 +130,7 @@ let running = false, paused = false, cityOffset = 0;
 let W = 0, H = 0, dpr = 1, horizonY = 0;
 const input = { gas: 0, brake: 0, left: 0, right: 0 };
 bestLevel = +(localStorage.getItem('cityracer3d-level') || 0);
-function timeLimit(lv) { return Math.max(26, 58 - (lv - 1) * 4); }   // seconds to finish a level
+function timeLimit(lv) { return Math.max(45, 90 - (lv - 1) * 5); }   // seconds to finish a level (generous)
 
 // ===== 3. HELPERS =====
 function lastY() { return segments.length === 0 ? 0 : segments[segments.length - 1].p2.world.y; }
@@ -188,9 +188,8 @@ function makeBuilding() {
 }
 function buildTrack() {
   segments = [];
-  straight(LEN.S); curve(LEN.M, CRV.M, HILL.L); curve(LEN.L, CRV.H, HILL.M); hill(LEN.M, HILL.H);
-  sCurves(); straight(LEN.M); curve(LEN.L, -CRV.H, -HILL.M); curve(LEN.M, -CRV.M, HILL.H);
-  hill(LEN.L, -HILL.H); straight(LEN.S); sCurves(); curve(LEN.L, CRV.H, HILL.M); straight(LEN.M);
+  straight(LEN.S); curve(LEN.M, CRV.M, HILL.L); curve(LEN.M, -CRV.H, HILL.M); hill(LEN.M, HILL.H);
+  sCurves(); straight(LEN.M); curve(LEN.M, -CRV.M, -HILL.M); straight(LEN.S);
   for (let i = 0; i < RUMBLE; i++) segments[i].color = START;
   for (let i = 1; i <= RUMBLE; i++) segments[segments.length - i].color = FINISH;
   // line the road with city buildings
@@ -259,13 +258,18 @@ function update(dt) {
   else                  speed += DECEL * dt;
   if ((playerX < -1 || playerX > 1) && speed > OFF_LIMIT) speed += OFF_DECEL * dt;
 
+  // hit the roadside buildings/barrier -> bounce back in and brake hard
+  const WALL = 1.9;
+  if (playerX < -WALL) { playerX = -WALL + 0.18; speed *= 0.4; }
+  else if (playerX > WALL) { playerX = WALL - 0.18; speed *= 0.4; }
+
   playerX = Math.max(-2.4, Math.min(2.4, playerX));
   speed = Math.max(0, Math.min(speed, MAXSPEED));
 
   if (speed > 0) for (const car of playerSeg.cars) {
     if (speed > car.speed && overlap(playerX, CAR_W / ROAD_W, car.offset, CAR_W / ROAD_W, 0.85)) {
       speed = car.speed * (car.speed / speed);
-      position = increase(car.z, -playerZ, trackLength); break;
+      position = increase(car.z, -playerZ * 2, trackLength); break;  // stop well behind so its whole rear shows
     }
   }
 
@@ -480,7 +484,7 @@ function drawTraffic(segScreen, car, clipY) {
 
 // ===== 9. COCKPIT (dashboard + gauges + wheel) =====
 function drawCockpit() {
-  const dashTop = H * 0.70;
+  const dashTop = H * 0.74;
   const dashH = H - dashTop;
 
   // soft A-pillar shadows framing the windshield
@@ -506,7 +510,7 @@ function drawCockpit() {
   // gauges flank the wheel
   const gaugeR = Math.min(dashH * 0.42, W * 0.12);
   const gy = dashTop + dashH * 0.46;
-  const kmh = speed / 95;
+  const kmh = speed / (MAXSPEED / 200);   // dial tops out at 200 km/h
   const spd = speed / MAXSPEED;
   const gear = speed < 1 ? 'N' : Math.min(6, 1 + Math.floor(spd * 6));
   const rpm = speed < 1 ? 900 : 1000 + ((spd * 6) % 1) * 7200;
@@ -687,9 +691,17 @@ addEventListener('keyup', e => { const k = keymap[e.key]; if (k) { input[k] = 0;
 
 function hold(sel, key) {
   const el = $(sel);
-  const on = e => { e.preventDefault(); input[key] = 1; }, off = e => { e.preventDefault(); input[key] = 0; };
+  // capture the pointer so a held button keeps firing even if the finger drifts,
+  // and so gas + steering on two fingers don't cancel each other (no pointerleave).
+  const on = e => {
+    e.preventDefault();
+    input[key] = 1;
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+  };
+  const off = e => { e.preventDefault(); input[key] = 0; };
   el.addEventListener('pointerdown', on);
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, off));
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
 }
 hold('#bGas', 'gas'); hold('#bBrake', 'brake'); hold('#bLeft', 'left'); hold('#bRight', 'right');
 
