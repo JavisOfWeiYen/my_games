@@ -51,7 +51,7 @@ top of the `<script>`. 打開 `index.html`，找到 `<script>` 上方的 **CONFI
 
 ```js
 const MAXSPEED = SEG * 64;     // top speed — shows as 200 km/h 極速
-const CENTRIFUGAL = 0.32;      // how hard curves push you out 彎道甩出力
+const CENTRIFUGAL = 0.18;      // how hard curves push you out (lower = easier) 彎道甩出力
 const CAM_H = 720;             // camera height (lower = more in-car) 視角高度
 const FOV = 98;                // field of view 視野廣度
 ```

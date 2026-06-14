@@ -106,7 +106,7 @@ const view = $('#view'), ctx = view.getContext('2d');
 const SEG = 200, RUMBLE = 5, ROAD_W = 2000, LANES = 3;
 const DRAW = 240, FOV = 98, CAM_H = 720;   // low, in-car eye level (you see cars' full rear)
 const HZN = 0.50;                          // horizon position (fraction of height)
-const CENTRIFUGAL = 0.32;
+const CENTRIFUGAL = 0.18;        // lower = curves are easier to hold
 const CAR_W = ROAD_W * 0.52;
 const cameraDepth = 1 / Math.tan((FOV / 2) * Math.PI / 180);
 const MAXSPEED = SEG * 64;       // top speed (shows as 200 km/h on the dial)
@@ -165,7 +165,7 @@ function addRoad(enter, hold, leave, curve, y) {
   for (let h = 0; h < hold; h++, n++) addSegment(curve, easeInOut(startY, endY, n / total));
   for (let l = 0; l < leave; l++, n++) addSegment(easeInOut(curve, 0, l / leave), easeInOut(startY, endY, n / total));
 }
-const LEN = { S: 25, M: 50, L: 100 }, CRV = { E: 2, M: 4, H: 5 }, HILL = { L: 8, M: 18, H: 30 };
+const LEN = { S: 25, M: 50, L: 100 }, CRV = { E: 1.5, M: 3, H: 4 }, HILL = { L: 8, M: 18, H: 30 };
 function straight(n) { addRoad(n, n, n, 0, 0); }
 function curve(n, c, h) { addRoad(n, n, n, c, h || 0); }
 function hill(n, h) { addRoad(n, n, n, 0, h); }
@@ -248,7 +248,7 @@ function update(dt) {
   const playerSeg = findSegment(position + playerZ);
   const speedPct = speed / MAXSPEED;
 
-  const dx = dt * 2.4 * speedPct;
+  const dx = dt * 3.0 * speedPct;   // steering authority (snappier turn-in)
   if (input.left)  playerX -= dx;
   if (input.right) playerX += dx;
   playerX -= dx * speedPct * playerSeg.curve * CENTRIFUGAL;
@@ -338,6 +338,8 @@ function drawBackground() {
   let g = ctx.createLinearGradient(0, 0, 0, hz);
   g.addColorStop(0, '#05060f'); g.addColorStop(.55, '#141833'); g.addColorStop(1, '#3a2552');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, hz + 2);
+  // opaque ground below the horizon so hills/dips never reveal a see-through gap
+  ctx.fillStyle = '#0b1018'; ctx.fillRect(0, hz, W, H - hz);
   // stars
   ctx.fillStyle = 'rgba(255,255,255,.5)';
   for (let i = 0; i < 70; i++) ctx.fillRect((i * 137.5) % W, (i * 53.3) % (hz * 0.78), 1.5, 1.5);
