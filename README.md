@@ -11,7 +11,7 @@ No install needed — they run right in your browser (computer, tablet, or phone
 |---|---|---|
 | ✨ **Dress-Up Studio 換裝小遊戲** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/dress-up-studio/) | Dress up your doll! Hair, hats, clothes, skirts, shoes, accessories — every piece in any color. Featuring an Ice Queen ❄️ outfit. 幫娃娃換裝:髮型、帽子、衣服、裙子、鞋子、配件通通可以換,還有冰雪女王造型! |
 | 🧱 **Block Drop 方塊掉掉樂** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/tetris/) | A cute Tetris! Stack the falling blocks and clear full rows. Keyboard or touch/swipe controls, next + hold pieces, levels, and a saved high score. 可愛版俄羅斯方塊:堆方塊、消滿行,支援鍵盤與手機滑動,有預告/暫存方塊、等級與最高分紀錄! |
-| 🏎️ **City Racer 城市賽車** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/city-racer/) | A cockpit-view pseudo-3D racer — dashboard with speed + rev gauges and a steering wheel, racing a neon night highway past detailed traffic. Beat the clock to clear each level; it gets faster every time. Keyboard or touch. 車內視角賽車:儀表板有時速錶與轉速錶、還有方向盤,飆過霓虹夜間公路、閃避擬真車流,限時內衝過終點就晉級,每關更快,支援鍵盤與觸控! |
+| 🏎️ **City Racer 城市賽車** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/city-racer/) | A cockpit-view pseudo-3D racer — speed + rev gauges, steering wheel, engine sound and corner drifting. Beat the clock each level to advance, through changing scenes (night city, day, desert, grassland, seaside). Keyboard or touch. 車內視角賽車:時速/轉速錶、方向盤、引擎聲與過彎甩尾,限時闖關,場景隨關卡變換(夜城、白天、沙漠、草原、海邊),支援鍵盤與觸控! |
 
 ![Dress-Up Studio screenshot](dress-up-studio/screenshot.png)
 
@@ -38,8 +38,9 @@ No install needed — they run right in your browser (computer, tablet, or phone
 - 🪟 **Cockpit view 車內視角** — sit in the driver's seat with the dashboard and half the wheel in view 坐在駕駛座,看得到儀表板與半個方向盤
 - 🎛️ **Live gauges 即時儀表** — a speedometer and a rev counter with needles, plus a gear readout 時速錶、轉速錶(指針會動)與檔位顯示
 - 🚗 **Detailed traffic 擬真車流** — cars and trucks with windows, mirrors and glowing tail lights to overtake 有車窗、後視鏡、發光尾燈的轎車與卡車可超越
-- ⏱️ **Timed levels 限時闖關** — reach the finish before time runs out to advance; each level is faster and busier 在時間內衝過終點就晉級,每關更快、車更多
-- 🌃 **Neon night city 霓虹夜城** — parallax skyline, moon, glowing rumble strips and roadside lights 視差天際線、月亮、發光路緣與路邊燈
+- ⏱️ **Timed levels 限時闖關** — reach the finish line before time runs out to advance; each level is faster and busier 在時間內衝過終點線就晉級,每關更快、車更多
+- 🏞️ **Changing scenes 場景變換** — night city, daytime, desert, grassland and seaside cycle as you level up 霓虹夜城、白天、沙漠、草原、海邊隨關卡輪替
+- 🔊 **Sound & drift 音效與甩尾** — engine note, tyre screech and a view that leans into the corners 引擎聲、甩尾摩擦聲,畫面隨過彎傾斜
 - ⌨️📱 **Keyboard & touch 鍵盤與觸控** — arrows/WASD or on-screen buttons 方向鍵/WASD 或螢幕按鈕
 
 ## 🚀 Run Locally 在自己電腦上玩

@@ -21,6 +21,12 @@ Run out of time and it's **Game Over**. Your best level reached is saved.
 每一關都有**到達終點線的時間限制**：時間內衝過終點就晉級下一關（更快、車更多）；
 時間到還沒到終點就 **Game Over**。會記住你達到的最高關卡。
 
+Each level uses a different **scene** — neon night city, daytime, desert,
+grassland, seaside — and they cycle as you climb. There's **engine sound**,
+a **tyre screech** when you drift hard through a corner, and the view **leans
+into the turn**. 每一關場景不同（霓虹夜城、白天、沙漠、草原、海邊）會輪流出現；
+有引擎聲、過彎甩尾的輪胎摩擦聲，畫面也會隨過彎傾斜。
+
 The road is drawn with a classic "pseudo-3D" trick — flat road segments
 projected into the distance — so it runs smoothly anywhere, even on a phone.
 道路是用經典的 pseudo-3D 技巧畫出來的（把平面路段投影到遠方），所以到處都跑得很順，手機也行。
@@ -61,6 +67,8 @@ Easy experiments 簡單的小實驗：
 - Raise `MAXSPEED` for a faster car. 把 `MAXSPEED` 調大車更快。
 - Make the levels easier/harder by editing `timeLimit()` (seconds per level).
   改 `timeLimit()` 調整每關的限時，讓關卡更簡單或更難。
+- Add or edit a **scene** in the `THEMES` list (sky / ground / road colours
+  and a scenery type: city / cactus / tree / palm). 在 `THEMES` 清單新增或修改場景。
 - Edit `buildTrack()` to design your own course — add `curve()`, `hill()`,
   `straight()` and `sCurves()`. 改 `buildTrack()` 設計自己的賽道。
 - Change the neon colours in `LIGHT` / `DARK` / `CAR_COLORS`. 改霓虹配色。

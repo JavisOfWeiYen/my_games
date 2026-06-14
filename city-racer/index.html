@@ -114,16 +114,38 @@ const ACCEL = MAXSPEED / 5, BRAKE = -MAXSPEED, DECEL = -MAXSPEED / 5;
 const OFF_DECEL = -MAXSPEED / 1.6, OFF_LIMIT = MAXSPEED / 3.2;
 const playerZ = CAM_H * cameraDepth;
 
-// ---------------- colours (night neon) ----------------
-const LIGHT  = { road:'#3b3e49', grass:'#0e1320', rumble:'#c7ccd8', edge:'#eef2fb', lane:'#eef2fb' };
-const DARK   = { road:'#35383f', grass:'#0b0f19', rumble:'#8d929e', edge:'#eef2fb', lane:null };
-const START  = { road:'#e7e8ee', grass:'#0e1320', rumble:'#e7e8ee', edge:'#e7e8ee', lane:null };
-const FINISH = { road:'#1a1c24', grass:'#0e1320', rumble:'#1a1c24', edge:'#1a1c24', lane:null };
+// ---------------- scene themes (one per level, then they cycle) ----------------
+// road/grass/rumble are [light, dark] pairs (alternate every RUMBLE segments).
+const THEMES = [
+  { name: 'Night City', zh: '霓虹夜城', night: true, scenery: 'city', distant: 'skyline',
+    sky: ['#05060f', '#141833', '#3a2552'], ground: '#0b1018',
+    road: ['#3b3e49', '#35383f'], grass: ['#0e1320', '#0b0f19'],
+    rumble: ['#c7ccd8', '#8d929e'], edge: '#eef2fb', lane: '#eef2fb' },
+  { name: 'Daytime', zh: '白天市區', night: false, scenery: 'city', distant: 'skyline',
+    sky: ['#4ea8ff', '#9bd2ff', '#dcefff'], ground: '#5f8a4f',
+    road: ['#6b6f79', '#636771'], grass: ['#6ea05a', '#629150'],
+    rumble: ['#eef2f8', '#c3c9d4'], edge: '#ffffff', lane: '#f4d23f' },
+  { name: 'Desert', zh: '沙漠', night: false, scenery: 'cactus', distant: 'dunes',
+    sky: ['#ffc89c', '#ffb079', '#ff9457'], ground: '#d8b272',
+    road: ['#6f6a61', '#67635b'], grass: ['#dcb877', '#cfa765'],
+    rumble: ['#f3e7d2', '#cdb997'], edge: '#f6eedb', lane: '#f6eedb' },
+  { name: 'Grassland', zh: '草原', night: false, scenery: 'tree', distant: 'hills',
+    sky: ['#7ec8ff', '#bfe6ff', '#eafff0'], ground: '#56a049',
+    road: ['#5f636e', '#585c66'], grass: ['#62b257', '#54a049'],
+    rumble: ['#eef2f6', '#c6ccd4'], edge: '#ffffff', lane: '#ffffff' },
+  { name: 'Seaside', zh: '海邊', night: false, scenery: 'palm', distant: 'sea',
+    sky: ['#5fb4ff', '#a6dbff', '#e6f7ff'], ground: '#e2d199',
+    road: ['#6a6e78', '#63676f'], grass: ['#e6d49a', '#dac88a'],
+    rumble: ['#eef2f6', '#cfd5de'], edge: '#ffffff', lane: '#ffffff' },
+];
+let theme = THEMES[0];
+function themeForLevel(lv) { return THEMES[(lv - 1) % THEMES.length]; }
 const CAR_COLORS = ['#34d3ff','#ff5db4','#fbbf24','#a78bfa','#34d399','#fb7185','#7aa2ff','#f97316'];
 
 // ===== 2. STATE =====
 let segments = [], cars = [], trackLength = 0;
 let position = 0, speed = 0, playerX = 0, steerAngle = 0;
+let bank = 0, driftAmt = 0;                       // cornering lean / drift feel
 let level = 1, timeLeft = 0, bestLevel = 0, banner = '', bannerUntil = 0;
 let perf = 0, lastT = 0, started = 0;
 let running = false, paused = false, cityOffset = 0;
@@ -155,7 +177,8 @@ function addSegment(curve, y) {
     p1: { world: { y: lastY(), z: n * SEG },      camera: {}, screen: {} },
     p2: { world: { y: y,       z: (n + 1) * SEG }, camera: {}, screen: {} },
     curve, cars: [], clip: 0,
-    color: Math.floor(n / RUMBLE) % 2 ? DARK : LIGHT,
+    dark: Math.floor(n / RUMBLE) % 2,    // alternating stripe; palette comes from the theme
+    finish: false,
   });
 }
 function addRoad(enter, hold, leave, curve, y) {
@@ -176,11 +199,12 @@ function sCurves() {
 }
 const BCOL = ['#141a2e', '#16122a', '#101a24', '#1a1430', '#121726'];
 const BNEON = ['#34d3ff', '#ff5db4', '#ffd27a', '#a78bfa', '#34d399'];
-function makeBuilding() {
+// a generic roadside prop; how it's drawn depends on the level's theme
+function makeProp() {
   return {
     off: ROAD_W * (1.7 + Math.random() * 1.3),     // lateral distance from road centre
     w:   ROAD_W * (0.9 + Math.random() * 1.0),
-    h:   2200 + Math.random() * 5200,
+    h:   2200 + Math.random() * 5200,              // building height; other props scale this down
     color: BCOL[Math.floor(Math.random() * BCOL.length)],
     neon:  BNEON[Math.floor(Math.random() * BNEON.length)],
     seed:  Math.floor(Math.random() * 1000),
@@ -188,15 +212,16 @@ function makeBuilding() {
 }
 function buildTrack() {
   segments = [];
-  straight(LEN.S); curve(LEN.M, CRV.M, HILL.L); curve(LEN.M, -CRV.H, HILL.M); hill(LEN.M, HILL.H);
-  sCurves(); straight(LEN.M); curve(LEN.M, -CRV.M, -HILL.M); straight(LEN.S);
-  for (let i = 0; i < RUMBLE; i++) segments[i].color = START;
-  for (let i = 1; i <= RUMBLE; i++) segments[segments.length - i].color = FINISH;
-  // line the road with city buildings
+  // net elevation returns to 0 so the road flows smoothly through the finish (no seam/cliff)
+  straight(LEN.S); curve(LEN.M, CRV.M, HILL.M); hill(LEN.M, HILL.H); curve(LEN.M, -CRV.H, -HILL.M);
+  sCurves(); straight(LEN.M); hill(LEN.L, -48); straight(LEN.S);
+  // the road just keeps going — the finish is a painted line across it (2 segments wide)
+  segments[2].finish = true; segments[3].finish = true;
+  // line the road with scenery props (drawn as buildings/cacti/trees/palms per theme)
   for (const s of segments) {
     if (s.index % 4 === 0) {
-      if (Math.random() < 0.78) s.bL = makeBuilding();
-      if (Math.random() < 0.78) s.bR = makeBuilding();
+      if (Math.random() < 0.8) s.bL = makeProp();
+      if (Math.random() < 0.8) s.bR = makeProp();
     }
   }
   trackLength = segments.length * SEG;
@@ -260,14 +285,17 @@ function update(dt) {
 
   // hit the roadside buildings/barrier -> bounce back in and brake hard
   const WALL = 1.9;
-  if (playerX < -WALL) { playerX = -WALL + 0.18; speed *= 0.4; }
-  else if (playerX > WALL) { playerX = WALL - 0.18; speed *= 0.4; }
+  if (playerX < -WALL || playerX > WALL) {
+    if (speed > OFF_LIMIT) crash();
+    playerX = (playerX < 0 ? -WALL + 0.18 : WALL - 0.18); speed *= 0.4;
+  }
 
   playerX = Math.max(-2.4, Math.min(2.4, playerX));
   speed = Math.max(0, Math.min(speed, MAXSPEED));
 
   if (speed > 0) for (const car of playerSeg.cars) {
     if (speed > car.speed && overlap(playerX, CAR_W / ROAD_W, car.offset, CAR_W / ROAD_W, 0.85)) {
+      if (speed > car.speed + OFF_LIMIT) crash();
       speed = car.speed * (car.speed / speed);
       position = increase(car.z, -playerZ * 2, trackLength); break;  // stop well behind so its whole rear shows
     }
@@ -279,14 +307,25 @@ function update(dt) {
   cityOffset = increase(cityOffset, playerSeg.curve * speedPct * dt * 1.4, 1);
 
   // steering wheel eases toward the turn + the road's curve
-  const target = ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * 0.6 + playerSeg.curve * 0.05;
+  const steerInput = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const target = steerInput * 0.6 + playerSeg.curve * 0.05;
   steerAngle += (target - steerAngle) * Math.min(1, dt * 7);
+
+  // drift feel: how much the car is being thrown sideways through the corner,
+  // used to lean the view (bank) and to fade in the tyre screech.
+  driftAmt = Math.min(1, Math.abs(steerInput) * speedPct + Math.abs(playerSeg.curve) * speedPct * 0.22);
+  const driftDir = steerInput !== 0 ? steerInput : Math.sign(playerSeg.curve);
+  bank += (driftDir * driftAmt * 0.05 - bank) * Math.min(1, dt * 6);
 }
 
 // ===== 8. RENDER =====
 function render() {
   horizonY = Math.round(H * HZN);
   ctx.clearRect(0, 0, W, H);
+
+  // lean the whole world into the corner (drift feel); cockpit stays put
+  ctx.save();
+  if (bank) { ctx.translate(W / 2, horizonY); ctx.rotate(bank); ctx.translate(-W / 2, -horizonY); }
   drawBackground();
 
   const baseSeg = findSegment(position);
@@ -303,17 +342,17 @@ function render() {
     project(seg.p2, playerX * ROAD_W - x - dx, playerY + CAM_H, camZ);
     x += dx; dx += seg.curve; seg.clip = maxy;
     if (seg.p1.camera.z <= cameraDepth || seg.p2.screen.y >= seg.p1.screen.y || seg.p2.screen.y >= maxy) continue;
-    renderSegment(seg.p1.screen, seg.p2.screen, seg.color);
+    renderSegment(seg.p1.screen, seg.p2.screen, seg);
     maxy = seg.p2.screen.y;
   }
 
-  // buildings, roadside reflectors and traffic — far to near
+  // scenery props, roadside reflectors and traffic — far to near
   for (let n = DRAW - 1; n > 0; n--) {
     const seg = segments[(baseSeg.index + n) % segments.length];
     const s = seg.p1.screen;
-    if (seg.bL) drawBuilding(s, -1, seg.bL);
-    if (seg.bR) drawBuilding(s, 1, seg.bR);
-    if (s.scale && seg.index % 4 === 0) {
+    if (seg.bL) drawProp(s, -1, seg.bL);
+    if (seg.bR) drawProp(s, 1, seg.bR);
+    if (theme.night && s.scale && seg.index % 4 === 0) {
       const r = Math.max(1, s.scale * 2400);
       if (r < 20) {
         const ex = s.scale * ROAD_W * 1.05 * W / 2;
@@ -323,6 +362,7 @@ function render() {
     }
     for (const car of seg.cars) drawTraffic(s, car, seg.clip);
   }
+  ctx.restore();
 
   drawCockpit();
   drawInfo();
@@ -334,27 +374,55 @@ function glowDot(x, y, r, col) {
 }
 
 function drawBackground() {
-  const hz = horizonY;
-  let g = ctx.createLinearGradient(0, 0, 0, hz);
-  g.addColorStop(0, '#05060f'); g.addColorStop(.55, '#141833'); g.addColorStop(1, '#3a2552');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, hz + 2);
+  const hz = horizonY, OS = 90;                 // overscan so the lean never exposes canvas edges
+  let g = ctx.createLinearGradient(0, -OS, 0, hz);
+  g.addColorStop(0, theme.sky[0]); g.addColorStop(.6, theme.sky[1]); g.addColorStop(1, theme.sky[2]);
+  ctx.fillStyle = g; ctx.fillRect(-OS, -OS, W + OS * 2, hz + OS);
   // opaque ground below the horizon so hills/dips never reveal a see-through gap
-  ctx.fillStyle = '#0b1018'; ctx.fillRect(0, hz, W, H - hz);
-  // stars
-  ctx.fillStyle = 'rgba(255,255,255,.5)';
-  for (let i = 0; i < 70; i++) ctx.fillRect((i * 137.5) % W, (i * 53.3) % (hz * 0.78), 1.5, 1.5);
-  // moon with soft glow
-  ctx.save(); ctx.shadowColor = 'rgba(180,200,255,.6)'; ctx.shadowBlur = 30;
-  ctx.fillStyle = '#dce8ff'; ctx.beginPath(); ctx.arc(W * 0.82, hz * 0.4, 30, 0, 7); ctx.fill(); ctx.restore();
-  ctx.fillStyle = '#141833'; ctx.beginPath(); ctx.arc(W * 0.8, hz * 0.36, 26, 0, 7); ctx.fill();
-  // skyline (parallax), two layers for depth
-  const shift = cityOffset * 720;
-  drawSkyline(hz, shift * 0.5, hz * 0.5, '#0a0e22', 64, 0);
-  drawSkyline(hz, shift, hz * 0.62, '#0c1228', 46, 1);
-  // horizon haze line
-  let h2 = ctx.createLinearGradient(0, hz - 24, 0, hz + 4);
-  h2.addColorStop(0, 'rgba(120,90,170,0)'); h2.addColorStop(1, 'rgba(150,110,200,.35)');
-  ctx.fillStyle = h2; ctx.fillRect(0, hz - 24, W, 28);
+  ctx.fillStyle = theme.ground; ctx.fillRect(-OS, hz, W + OS * 2, H - hz + OS);
+
+  if (theme.night) {
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    for (let i = 0; i < 70; i++) ctx.fillRect((i * 137.5) % W, (i * 53.3) % (hz * 0.78), 1.5, 1.5);
+    ctx.save(); ctx.shadowColor = 'rgba(180,200,255,.6)'; ctx.shadowBlur = 30;
+    ctx.fillStyle = '#dce8ff'; ctx.beginPath(); ctx.arc(W * 0.82, hz * 0.4, 30, 0, 7); ctx.fill(); ctx.restore();
+    ctx.fillStyle = theme.sky[1]; ctx.beginPath(); ctx.arc(W * 0.8, hz * 0.36, 26, 0, 7); ctx.fill();
+  } else {
+    ctx.save(); ctx.shadowColor = 'rgba(255,240,200,.9)'; ctx.shadowBlur = 50;
+    ctx.fillStyle = '#fff6da'; ctx.beginPath(); ctx.arc(W * 0.76, hz * 0.42, 34, 0, 7); ctx.fill(); ctx.restore();
+  }
+
+  drawDistant(hz);
+}
+function drawDistant(hz) {
+  const d = theme.distant, shift = cityOffset * 720;
+  if (d === 'skyline') {
+    drawSkyline(hz, shift * 0.5, hz * 0.5, theme.night ? '#0a0e22' : '#9aadc4', 64, 0);
+    drawSkyline(hz, shift, hz * 0.62, theme.night ? '#0c1228' : '#8395ac', 46, theme.night ? 1 : 2);
+  } else if (d === 'dunes') {
+    duneBand(hz, hz * 0.30, '#c79f5d', shift * 0.4);
+    duneBand(hz, hz * 0.18, '#b3854a', shift * 0.7);
+  } else if (d === 'hills') {
+    duneBand(hz, hz * 0.34, '#3f7a44', shift * 0.4);
+    duneBand(hz, hz * 0.20, '#356a3a', shift * 0.7);
+  } else if (d === 'sea') {
+    let sg = ctx.createLinearGradient(0, hz - hz * 0.16, 0, hz + 6);
+    sg.addColorStop(0, '#2f7fb8'); sg.addColorStop(1, '#46a6dd');
+    ctx.fillStyle = sg; ctx.fillRect(-90, hz - hz * 0.16, W + 180, hz * 0.16 + 6);
+    ctx.fillStyle = 'rgba(255,255,255,.3)';
+    for (let i = 0; i < 6; i++) ctx.fillRect(W * 0.7 + (i % 3) * 8, hz - hz * 0.11 + i * 3, 26 - i * 3, 2);
+  }
+  let h2 = ctx.createLinearGradient(0, hz - 22, 0, hz + 4);
+  h2.addColorStop(0, 'rgba(255,255,255,0)'); h2.addColorStop(1, theme.night ? 'rgba(150,110,200,.30)' : 'rgba(255,255,255,.26)');
+  ctx.fillStyle = h2; ctx.fillRect(-90, hz - 22, W + 180, 26);
+}
+function duneBand(hz, maxH, color, shift) {
+  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(-90, hz);
+  for (let bx = -90; bx <= W + 90; bx += 24) {
+    const y = hz - (0.4 + 0.6 * Math.abs(Math.sin((bx + shift) * 0.01))) * maxH;
+    ctx.lineTo(bx, y);
+  }
+  ctx.lineTo(W + 90, hz); ctx.closePath(); ctx.fill();
 }
 function drawSkyline(hz, shift, maxH, color, step, lit) {
   for (let bx = -step + ((-shift % step) + step) % step; bx < W; bx += step) {
@@ -363,10 +431,12 @@ function drawSkyline(hz, shift, maxH, color, step, lit) {
     const bw = step - 10 - (seed % 3) * 4;
     ctx.fillStyle = color; ctx.fillRect(bx, hz - bh, bw, bh);
     if (lit) {
-      ctx.fillStyle = (seed % 4 === 0) ? 'rgba(52,211,255,.5)' : 'rgba(255,221,120,.38)';
       for (let wy = hz - bh + 6; wy < hz - 4; wy += 9)
         for (let wx = bx + 4; wx < bx + bw - 4; wx += 7)
-          if ((seed + wx + wy) % 3 === 0) ctx.fillRect(wx, wy, 2.5, 3.5);
+          if ((seed + wx + wy) % 3 === 0) {
+            ctx.fillStyle = lit === 1 ? ((seed % 4 === 0) ? 'rgba(52,211,255,.5)' : 'rgba(255,221,120,.38)') : 'rgba(40,55,78,.45)';
+            ctx.fillRect(wx, wy, 2.5, 3.5);
+          }
     }
   }
 }
@@ -375,54 +445,112 @@ function poly(x1, y1, x2, y2, x3, y3, x4, y4, color) {
   ctx.fillStyle = color; ctx.beginPath();
   ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4); ctx.closePath(); ctx.fill();
 }
-function renderSegment(p1, p2, c) {
+function renderSegment(p1, p2, seg) {
+  const d = seg.dark;
+  const road = theme.road[d], grass = theme.grass[d], rumble = theme.rumble[d];
   const r1 = p1.w / 5, r2 = p2.w / 5;     // rumble width
   const e1 = p1.w / 22, e2 = p2.w / 22;   // edge line width
-  ctx.fillStyle = c.grass; ctx.fillRect(0, p2.y, W, p1.y - p2.y);
+  ctx.fillStyle = grass; ctx.fillRect(-90, p2.y, W + 180, p1.y - p2.y);
   // rumble strips
-  poly(p1.x - p1.w - r1, p1.y, p1.x - p1.w, p1.y, p2.x - p2.w, p2.y, p2.x - p2.w - r2, p2.y, c.rumble);
-  poly(p1.x + p1.w + r1, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x + p2.w + r2, p2.y, c.rumble);
+  poly(p1.x - p1.w - r1, p1.y, p1.x - p1.w, p1.y, p2.x - p2.w, p2.y, p2.x - p2.w - r2, p2.y, rumble);
+  poly(p1.x + p1.w + r1, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x + p2.w + r2, p2.y, rumble);
   // road
-  poly(p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, c.road);
+  poly(p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, road);
+
+  // finish line: a checkered band painted across the (continuing) road
+  if (seg.finish) {
+    const cols = 10;
+    for (let i = 0; i < cols; i++) {
+      const ta = i / cols, tb = (i + 1) / cols;
+      const x1a = p1.x - p1.w + 2 * p1.w * ta, x1b = p1.x - p1.w + 2 * p1.w * tb;
+      const x2a = p2.x - p2.w + 2 * p2.w * ta, x2b = p2.x - p2.w + 2 * p2.w * tb;
+      poly(x1a, p1.y, x1b, p1.y, x2b, p2.y, x2a, p2.y, (i + seg.index) % 2 ? '#10121a' : '#eef2fb');
+    }
+    return;
+  }
   // solid edge lines just inside the road
-  poly(p1.x - p1.w + e1 * 2, p1.y, p1.x - p1.w + e1 * 3, p1.y, p2.x - p2.w + e2 * 3, p2.y, p2.x - p2.w + e2 * 2, p2.y, c.edge);
-  poly(p1.x + p1.w - e1 * 3, p1.y, p1.x + p1.w - e1 * 2, p1.y, p2.x + p2.w - e2 * 2, p2.y, p2.x + p2.w - e2 * 3, p2.y, c.edge);
+  poly(p1.x - p1.w + e1 * 2, p1.y, p1.x - p1.w + e1 * 3, p1.y, p2.x - p2.w + e2 * 3, p2.y, p2.x - p2.w + e2 * 2, p2.y, theme.edge);
+  poly(p1.x + p1.w - e1 * 3, p1.y, p1.x + p1.w - e1 * 2, p1.y, p2.x + p2.w - e2 * 2, p2.y, p2.x + p2.w - e2 * 3, p2.y, theme.edge);
   // dashed lane separators (only on light segments -> stripes)
-  if (c.lane) {
+  if (!d && theme.lane) {
     const lw1 = p1.w / 30, lw2 = p2.w / 30;
     for (let i = 1; i < LANES; i++) {
       const lx1 = p1.x - p1.w + (2 * p1.w / LANES) * i, lx2 = p2.x - p2.w + (2 * p2.w / LANES) * i;
-      poly(lx1 - lw1, p1.y, lx1 + lw1, p1.y, lx2 + lw2, p2.y, lx2 - lw2, p2.y, c.lane);
+      poly(lx1 - lw1, p1.y, lx1 + lw1, p1.y, lx2 + lw2, p2.y, lx2 - lw2, p2.y, theme.lane);
     }
   }
 }
 
-// a neon roadside building, projected from its segment
-function drawBuilding(s, side, b) {
+// a roadside prop, drawn per the level's theme
+function drawProp(s, side, prop) {
   if (!s.scale) return;
-  const wpx = s.scale * b.w * W / 2;
-  const hpx = s.scale * b.h * H / 2;
+  const cxp = s.x + side * s.scale * prop.off * W / 2;
+  const t = theme.scenery;
+  if (t === 'city') { drawBuildingProp(s, cxp, prop); return; }
+  // natural props sit on the ground; size scales with projection
+  const baseH = ROAD_W * (t === 'palm' ? 1.25 : t === 'tree' ? 1.0 : 0.95);
+  const hpx = s.scale * baseH * (0.8 + (prop.seed % 100) / 250) * H / 2;
+  const wpx = s.scale * ROAD_W * (t === 'tree' ? 0.9 : t === 'palm' ? 0.7 : 0.42) * W / 2;
+  if (hpx < 4 || cxp > W + 120 || cxp < -120 || s.y - hpx > s.clip) return;
+  if (t === 'cactus') drawCactus(cxp, s.y, wpx, hpx);
+  else if (t === 'tree') drawTree(cxp, s.y, wpx, hpx);
+  else drawPalm(cxp, s.y, wpx, hpx, prop.seed);
+}
+function drawBuildingProp(s, cxp, b) {
+  const wpx = s.scale * b.w * W / 2, hpx = s.scale * b.h * H / 2;
   if (wpx < 2 || hpx < 3) return;
-  const cxp = s.x + side * s.scale * b.off * W / 2;
   const bx = cxp - wpx / 2, byTop = s.y - hpx;
-  if (byTop > s.clip || bx > W || bx + wpx < 0) return;
-  // facade with a side-lit gradient
+  if (byTop > s.clip || bx > W + 90 || bx + wpx < -90) return;
+  const night = theme.night, base = night ? b.color : '#a9b3c3';
   const g = ctx.createLinearGradient(bx, 0, bx + wpx, 0);
-  g.addColorStop(0, b.color); g.addColorStop(1, darken(b.color, .65));
+  g.addColorStop(0, base); g.addColorStop(1, darken(base, night ? .65 : .82));
   ctx.fillStyle = g; ctx.fillRect(bx, byTop, wpx, hpx);
-  // glowing roofline
-  ctx.fillStyle = b.neon; ctx.fillRect(bx, byTop, wpx, Math.max(1, hpx * 0.018));
-  // lit windows (kept cheap)
+  ctx.fillStyle = night ? b.neon : '#7e8aa0'; ctx.fillRect(bx, byTop, wpx, Math.max(1, hpx * 0.018));
   if (wpx > 10 && hpx > 16) {
     const cols = Math.min(6, Math.max(2, Math.floor(wpx / 9)));
     const rows = Math.min(16, Math.max(2, Math.floor(hpx / 12)));
     const gw = wpx / cols, gh = hpx / rows;
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++)
       if ((b.seed + r * 3 + c * 7) % 3 === 0) {
-        ctx.fillStyle = ((b.seed + r + c) % 6 === 0) ? b.neon : 'rgba(255,221,150,.5)';
+        ctx.fillStyle = night ? (((b.seed + r + c) % 6 === 0) ? b.neon : 'rgba(255,221,150,.5)') : 'rgba(50,66,92,.5)';
         ctx.fillRect(bx + c * gw + gw * 0.22, byTop + r * gh + gh * 0.2, gw * 0.5, gh * 0.5);
       }
   }
+}
+function drawCactus(bx, by, w, h) {
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(bx, by, w * 0.7, h * 0.035, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#3f8a4b';
+  const tw = Math.max(2, w * 0.46);
+  rrect(bx - tw / 2, by - h, tw, h, tw * 0.5); ctx.fill();
+  rrect(bx - tw * 1.3, by - h * 0.55, tw * 0.7, h * 0.30, tw * 0.35); ctx.fill();
+  rrect(bx - tw * 1.3, by - h * 0.80, tw * 0.7, h * 0.30, tw * 0.35); ctx.fill();
+  rrect(bx + tw * 0.6, by - h * 0.48, tw * 0.7, h * 0.26, tw * 0.35); ctx.fill();
+  rrect(bx + tw * 0.95, by - h * 0.72, tw * 0.7, h * 0.28, tw * 0.35); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.08)'; rrect(bx - tw * 0.32, by - h, tw * 0.22, h, tw * 0.1); ctx.fill();
+}
+function drawTree(bx, by, w, h) {
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(bx, by, w * 0.55, h * 0.04, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#6b4a2b'; const tw = Math.max(2, w * 0.16);
+  rrect(bx - tw / 2, by - h * 0.52, tw, h * 0.52, 1); ctx.fill();
+  ctx.fillStyle = '#357a3b';
+  ctx.beginPath(); ctx.arc(bx, by - h * 0.68, w * 0.5, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx - w * 0.30, by - h * 0.50, w * 0.34, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + w * 0.30, by - h * 0.52, w * 0.34, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.09)'; ctx.beginPath(); ctx.arc(bx - w * 0.15, by - h * 0.76, w * 0.17, 0, 7); ctx.fill();
+}
+function drawPalm(bx, by, w, h, seed) {
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(bx, by, w * 0.5, h * 0.03, 0, 0, 7); ctx.fill();
+  const lean = (seed % 2 ? 1 : -1) * w * 0.18;
+  ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = Math.max(2, w * 0.12); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(bx + lean * 0.5, by - h * 0.55, bx + lean, by - h); ctx.stroke();
+  const tx = bx + lean, ty = by - h;
+  ctx.strokeStyle = '#2f8f53'; ctx.lineWidth = Math.max(1.5, w * 0.06);
+  for (const a of [-2.5, -1.8, -1.1, -0.4, 0.4, 1.1]) {
+    ctx.beginPath(); ctx.moveTo(tx, ty);
+    ctx.quadraticCurveTo(tx + Math.cos(a) * w * 0.5, ty + Math.sin(a) * w * 0.4 - h * 0.04, tx + Math.cos(a) * w * 0.95, ty + Math.sin(a) * w * 0.8 + h * 0.02);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#caa15a'; ctx.beginPath(); ctx.arc(tx, ty + w * 0.06, Math.max(1.5, w * 0.08), 0, 7); ctx.fill();
 }
 
 // detailed rear-view traffic car
@@ -610,6 +738,7 @@ function drawInfo() {
   ctx.textAlign = 'left';
   ctx.fillStyle = '#34d3ff'; ctx.font = '800 26px system-ui, sans-serif'; ctx.fillText('LV ' + level, 16, 38);
   ctx.fillStyle = '#6b6e7e'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 LV ' + bestLevel, 16, 58);
+  ctx.fillStyle = theme.night ? '#9a9db0' : '#3a4258'; ctx.fillText('🎬 ' + theme.zh, 16, 76);
   // time left (top-right) — flashes red when low
   const tl = Math.max(0, timeLeft);
   ctx.textAlign = 'right';
@@ -627,14 +756,64 @@ function drawInfo() {
   }
 }
 
+// ----- audio: engine hum + tyre screech (continuous) and one-shot sfx -----
+let actx, master, engOsc, engOsc2, engGain, scrGain, audioReady = false, lastCrash = 0;
+function initAudio() {
+  if (actx) { actx.resume(); return; }
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  master = actx.createGain(); master.gain.value = 0.5; master.connect(actx.destination);
+  const ef = actx.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 950;
+  engGain = actx.createGain(); engGain.gain.value = 0;
+  engOsc = actx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 60;
+  engOsc2 = actx.createOscillator(); engOsc2.type = 'square'; engOsc2.frequency.value = 90;
+  const e2 = actx.createGain(); e2.gain.value = 0.35;
+  engOsc.connect(ef); engOsc2.connect(e2); e2.connect(ef); ef.connect(engGain); engGain.connect(master);
+  engOsc.start(); engOsc2.start();
+  const buf = actx.createBuffer(1, (actx.sampleRate * 0.5) | 0, actx.sampleRate);
+  const dch = buf.getChannelData(0); for (let i = 0; i < dch.length; i++) dch[i] = Math.random() * 2 - 1;
+  const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2300; bp.Q.value = 0.8;
+  scrGain = actx.createGain(); scrGain.gain.value = 0;
+  src.connect(bp); bp.connect(scrGain); scrGain.connect(master); src.start();
+  audioReady = true;
+}
+function updateAudio() {
+  if (!audioReady) return;
+  const live = running && !paused, spd = speed / MAXSPEED, now = actx.currentTime;
+  const gear = Math.floor(spd * 6), rpmFrac = speed < 1 ? 0.05 : ((spd * 6) % 1);
+  const f = 55 + gear * 7 + rpmFrac * 120;
+  engOsc.frequency.setTargetAtTime(f, now, 0.04);
+  engOsc2.frequency.setTargetAtTime(f * 1.5, now, 0.04);
+  engGain.gain.setTargetAtTime(live ? 0.05 + spd * 0.10 : 0, now, 0.06);
+  const scr = (live && driftAmt > 0.35 && spd > 0.3) ? Math.min(0.18, (driftAmt - 0.35) * 0.5 * spd) : 0;
+  scrGain.gain.setTargetAtTime(scr, now, 0.05);
+}
+function sfx(type) {
+  if (!audioReady) return;
+  const o = actx.createOscillator(), g = actx.createGain(); o.connect(g); g.connect(master);
+  const t = actx.currentTime;
+  if (type === 'crash') {
+    o.type = 'square'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.25);
+    g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.start(t); o.stop(t + 0.32);
+  } else if (type === 'level') {
+    o.type = 'triangle'; [523, 659, 784, 1047].forEach((fr, i) => o.frequency.setValueAtTime(fr, t + i * 0.09));
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.22, t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    o.start(t); o.stop(t + 0.5);
+  } else if (type === 'over') {
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(420, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.7);
+    g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.8); o.start(t); o.stop(t + 0.82);
+  }
+}
+function crash() { if (perf - lastCrash > 280) { lastCrash = perf; sfx('crash'); } }
+
 // ===== 11. LOOP + SIZING =====
 function loop(t) {
   requestAnimationFrame(loop);
   if (!lastT) lastT = t;
   let dt = (t - lastT) / 1000; lastT = t; perf = t;
-  if (!running || paused) { render(); return; }
-  dt = Math.min(dt, 0.033);
-  update(dt); render();
+  if (running && !paused) { dt = Math.min(dt, 0.033); update(dt); }
+  render();
+  updateAudio();
 }
 
 // ----- canvas sizing -----
@@ -648,20 +827,20 @@ window.addEventListener('resize', resize);
 
 // ===== 12. CONTROLS =====
 function startGame() {
-  level = 1; timeLeft = timeLimit(1); banner = '';
-  position = 0; speed = 0; playerX = 0; steerAngle = 0;
-  resetCars(); $('#overlay').classList.add('hidden'); running = true; paused = false; started = 1;
+  level = 1; theme = themeForLevel(1); timeLeft = timeLimit(1); banner = '';
+  position = 0; speed = 0; playerX = 0; steerAngle = 0; bank = 0; driftAmt = 0;
+  resetCars(); initAudio(); $('#overlay').classList.add('hidden'); running = true; paused = false; started = 1;
 }
 function restart() { startGame(); }
 function levelUp() {
   if (level > bestLevel) { bestLevel = level; try { localStorage.setItem('cityracer3d-level', bestLevel); } catch (e) {} }
-  level++;
+  level++; theme = themeForLevel(level);                  // next level -> next scene
   timeLeft = timeLimit(level) + Math.min(6, timeLeft);   // carry a little leftover time as a bonus
-  banner = 'LEVEL ' + level; bannerUntil = perf + 1900;
-  resetCars(); position = 0;                              // same circuit, more & faster traffic
+  banner = 'LEVEL ' + level + ' · ' + theme.zh; bannerUntil = perf + 1900;
+  resetCars(); position = 0; sfx('level');               // same circuit, more & faster traffic
 }
 function gameOver() {
-  running = false;
+  running = false; sfx('over');
   const ov = $('#overlay');
   ov.querySelector('h1').textContent = 'Game Over';
   ov.querySelector('p').innerHTML = 'Time up! Reached <b>Level ' + level + '</b>　時間到！到達第 <b>' + level + '</b> 關<br>Best 最佳 <b>Level ' + bestLevel + '</b>';
