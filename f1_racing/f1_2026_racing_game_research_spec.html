@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>F1 2026 賽車遊戲開發研究與技術規格書</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#11182f; --panel2:#17213d; --text:#eef3ff; --muted:#b6c1dd;
+      --accent:#ff3b30; --line:#2d395f; --code:#07101f; --ok:#5eead4; --warn:#facc15;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.72}
+    header{padding:64px 28px 36px;background:linear-gradient(135deg,#151d38 0%,#0b1020 55%,#2b0d13 100%);border-bottom:1px solid var(--line)}
+    .wrap{max-width:1180px;margin:auto}
+    h1{font-size:38px;line-height:1.18;margin:0 0 16px}
+    h2{font-size:28px;margin:46px 0 16px;border-left:6px solid var(--accent);padding-left:14px}
+    h3{font-size:21px;margin:30px 0 10px;color:#fff}
+    p{color:var(--muted);margin:12px 0}
+    .subtitle{font-size:18px;color:#d7def4;max-width:960px}
+    .meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+    .pill{border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.04);color:#d7def4;font-size:13px}
+    nav{background:#080d1b;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}
+    nav .wrap{display:flex;gap:14px;overflow:auto;padding:12px 28px}
+    nav a{color:#d7def4;text-decoration:none;white-space:nowrap;font-size:14px}
+    nav a:hover{color:#fff}
+    main{padding:28px}
+    section{background:rgba(255,255,255,.025);border:1px solid var(--line);border-radius:18px;padding:28px;margin:24px auto;max-width:1180px}
+    table{width:100%;border-collapse:collapse;margin:18px 0;background:var(--panel)}
+    th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}
+    th{background:var(--panel2);color:#fff}
+    td{color:#c8d3ee}
+    code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
+    pre{background:var(--code);border:1px solid var(--line);border-radius:14px;padding:18px;overflow:auto;color:#d7e7ff}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:18px 0}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px}
+    .card h3{margin-top:0}
+    .tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin:2px;color:#dbe5ff}
+    .ok{color:var(--ok)} .warn{color:var(--warn)}
+    .small{font-size:13px;color:#aab6d4}
+    a{color:#9bdcff}
+    .footnotes li{margin-bottom:8px;color:#b6c1dd}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>F1 2026 賽車遊戲開發研究與技術規格書</h1>
+    <p class="subtitle">可交給 AI / 工程團隊開發的 PRD + 技術規格文件：涵蓋 2026 F1 參賽廠商、規則、車輛資料模型、物理引擎、AI 車手、賽事系統、API、Unity / Unreal 實作與開發路線圖。</p>
+    <div class="meta">
+      <span class="pill">產出日期：2026-06-14</span>
+      <span class="pill">語言：繁體中文</span>
+      <span class="pill">用途：AI 開發規格 / PRD / 技術藍圖</span>
+      <span class="pill">注意：真實 F1 品牌與資料需授權</span>
+    </div>
+  </div>
+</header>
+
+<nav>
+  <div class="wrap">
+    <a href="#summary">摘要</a>
+    <a href="#teams">2026 車隊</a>
+    <a href="#rules">比賽規則</a>
+    <a href="#vehicle">車輛數據</a>
+    <a href="#game">遊戲系統</a>
+    <a href="#physics">物理引擎</a>
+    <a href="#ai">AI 車手</a>
+    <a href="#data">資料模型</a>
+    <a href="#api">API</a>
+    <a href="#engines">Unity / Unreal</a>
+    <a href="#roadmap">路線圖</a>
+    <a href="#legal">授權風險</a>
+  </div>
+</nav>
+
+<main>
+<section id="summary">
+  <h2>1. Executive Summary</h2>
+  <p>2026 年 Formula 1 是近年最大幅度的規則重置之一：底盤與動力單元規則同步改版，車體更小、更輕，導入全時主動空力，並改為更高比例的電能輸出。對賽車遊戲來說，2026 F1 的核心不是單純換車模，而是整個模擬架構都要支援「主動空力 + ERS 能量管理 + 新輪胎 + 新車隊 / 新 PU 格局」。</p>
+  <p>本文件建議採用「分層物理核心 + 規則版本化 + 內容資料驅動 + 混合 AI」架構。物理層處理輪胎、空力、ERS、燃油、碰撞與車輛動態；規則層處理排位、Sprint、輪胎義務、SC/VSC、旗號與判罰；AI 層則結合最佳路線、Utility AI、Behavior Tree 與局部 Reinforcement Learning。</p>
+  <div class="grid">
+    <div class="card"><h3>最重要的工程原則</h3><p>不要把規則與車輛數據寫死。所有規則、車隊、賽道、車輛、輪胎、ERS 都應資料化、版本化。</p></div>
+    <div class="card"><h3>最重要的商業風險</h3><p>真實 F1、車隊、車手、Logo、賽道外觀、官方圖像與計時資料都可能涉及授權。</p></div>
+    <div class="card"><h3>最務實的開發策略</h3><p>先做「規則真實、品牌虛構」版本；若取得授權，再替換為真實 F1 內容。</p></div>
+  </div>
+</section>
+
+<section id="teams">
+  <h2>2. 2026 F1 參賽廠商與車隊</h2>
+  <p>截至 2026-06-14，2026 F1 賽季可視為 11 支車隊格局。Audi 與 Cadillac 加入是最重要的內容變化；Cadillac 過渡期使用 Ferrari PU，GM Performance Power Units 預計自 2029 成為官方 PU 供應商。</p>
+  <table>
+    <thead><tr><th>車隊</th><th>官方名稱</th><th>底盤代號</th><th>2026 PU</th><th>遊戲資料建議</th></tr></thead>
+    <tbody>
+      <tr><td>Mercedes</td><td>Mercedes-AMG PETRONAS Formula One Team</td><td>W17</td><td>Mercedes</td><td>Works team；PU 與底盤整合優勢可在遊戲中反映為冷卻、部署效率與可靠度。</td></tr>
+      <tr><td>Ferrari</td><td>Scuderia Ferrari HP</td><td>SF-26</td><td>Ferrari</td><td>Works team；可設定高引擎輸出、強牽引與中高可靠度。</td></tr>
+      <tr><td>McLaren</td><td>McLaren Mastercard F1 Team</td><td>MCL40</td><td>Mercedes</td><td>Mercedes customer；可強調空力效率與輪胎管理。</td></tr>
+      <tr><td>Red Bull Racing</td><td>Oracle Red Bull Racing</td><td>RB22</td><td>Red Bull Ford</td><td>Works PU；2026 新 PU 風險可用較大性能區間表現。</td></tr>
+      <tr><td>Alpine</td><td>BWT Alpine Formula One Team</td><td>A526</td><td>Mercedes</td><td>改用 Mercedes PU；可把第一年整合成本反映在冷卻與車尾包裝。</td></tr>
+      <tr><td>Racing Bulls</td><td>Visa Cash App Racing Bulls Formula One Team</td><td>VCARB 03</td><td>Red Bull Ford</td><td>Red Bull Ford customer；與 Red Bull 共用部分資料假設。</td></tr>
+      <tr><td>Haas</td><td>TGR Haas F1 Team</td><td>VF-26</td><td>Ferrari</td><td>Ferrari customer；可做中段車隊基準。</td></tr>
+      <tr><td>Williams</td><td>Atlassian Williams F1 Team</td><td>FW48</td><td>Mercedes</td><td>Mercedes customer；可設定直線速度優勢與空力效率改善。</td></tr>
+      <tr><td>Audi</td><td>Audi Revolut F1 Team</td><td>R26</td><td>Audi</td><td>新 works team；可做高投資、高潛力但初期整合風險。</td></tr>
+      <tr><td>Aston Martin</td><td>Aston Martin Aramco Formula One Team</td><td>AMR26</td><td>Honda</td><td>Honda works partnership；可強調能量回收與效率。</td></tr>
+      <tr><td>Cadillac</td><td>Cadillac Formula 1 Team</td><td>MAC-26</td><td>Ferrari</td><td>新車隊；2026 使用 Ferrari PU，GM PU 自 2029 起導入可做 career mode 劇情。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="rules">
+  <h2>3. F1 比賽規則與遊戲邏輯</h2>
+  <table>
+    <thead><tr><th>規則模組</th><th>遊戲必須支援的邏輯</th><th>開發備註</th></tr></thead>
+    <tbody>
+      <tr><td>Race Weekend</td><td>Practice、Qualifying、Race；Sprint weekend 需支援 Sprint Qualifying 與 Sprint。</td><td>使用 weekend_format JSON，不要硬編碼。</td></tr>
+      <tr><td>Qualifying</td><td>Q1/Q2/Q3 淘汰制、計時、出界刪除圈速、Parc Fermé。</td><td>AI 需懂 traffic management 與出場時機。</td></tr>
+      <tr><td>Sprint</td><td>Sprint qualifying、短距離比賽、獨立積分。</td><td>2026 Sprint 站點需在 calendar 裡標記。</td></tr>
+      <tr><td>Tyre Rules</td><td>乾地正賽通常需使用至少兩種乾胎；雨胎規則例外。</td><td>策略引擎需檢查合法性。</td></tr>
+      <tr><td>DRS / Active Aero</td><td>2026 需改為主動空力模式，仍可設計 overtaking aid / override mode。</td><td>建議抽象成 aero_mode_controller。</td></tr>
+      <tr><td>ERS</td><td>部署、回收、SoC、超車模式、每圈或每段能量限制。</td><td>AI 策略與玩家 HUD 的核心。</td></tr>
+      <tr><td>Flags</td><td>黃旗、雙黃旗、綠旗、藍旗、紅旗、黑白旗、黑旗。</td><td>必須影響 AI 行為與玩家判罰。</td></tr>
+      <tr><td>SC / VSC</td><td>Safety Car、Virtual Safety Car、delta time、進站窗口。</td><td>策略模擬器的重要變數。</td></tr>
+      <tr><td>Penalties</td><td>Track limits、unsafe release、碰撞責任、超速、非法防守。</td><td>建議用 rule_event + steward_decision。</td></tr>
+      <tr><td>Pit Stop</td><td>進站速度限制、換胎、維修、unsafe release、double stack。</td><td>Career mode 可加入 pit crew skill。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="vehicle">
+  <h2>4. 2026 車輛技術架構與可用數據</h2>
+  <p>2026 F1 的官方公開資料可以提供規則邊界，但各隊真實空力圖、扭力曲線、懸吊、重心、慣量、輪胎熱模型與可靠度多為非公開資料。因此遊戲資料應分成三種：<span class="ok">official</span>、<span class="warn">estimated</span>、<span class="warn">calibrated</span>。</p>
+  <table>
+    <thead><tr><th>資料項目</th><th>公開程度</th><th>遊戲建議</th></tr></thead>
+    <tbody>
+      <tr><td>最小重量、尺寸、輪胎大方向</td><td>高</td><td>放入 regulation_version。</td></tr>
+      <tr><td>PU 架構、ERS-K 最大功率、燃油能量流限制</td><td>中高</td><td>作為硬限制，車隊可有不同效率參數。</td></tr>
+      <tr><td>空力 Cl / Cd / 主動模式</td><td>低</td><td>使用估算範圍 + calibration table。</td></tr>
+      <tr><td>扭力曲線與 ERS 部署地圖</td><td>低</td><td>用查表曲線 + 車隊係數。</td></tr>
+      <tr><td>懸吊、重心、慣量</td><td>低</td><td>以車隊 archetype 建立平衡差異。</td></tr>
+      <tr><td>輪胎熱衰與磨耗</td><td>低</td><td>建立 compounds 模型，由圈速與長距離資料校正。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="game">
+  <h2>5. 遊戲系統設計</h2>
+  <div class="grid">
+    <div class="card"><h3>駕駛模式</h3><p>Time Trial、Grand Prix、Championship、Career、Team Manager、Online Race、Replay。</p></div>
+    <div class="card"><h3>職涯模式</h3><p>車手成長、合約、研發升級、零件限制、車隊財務、車手市場、媒體事件。</p></div>
+    <div class="card"><h3>車隊管理</h3><p>研發樹、PU 選擇、風洞 / CFD 時間、升級失敗率、可靠度、pit crew。</p></div>
+    <div class="card"><h3>多人連線</h3><p>權威伺服器、輸入同步、狀態快照、反作弊、replay 驗證。</p></div>
+  </div>
+  <h3>核心模組分層</h3>
+  <pre><code>Game
+├─ Regulation Engine
+│  ├─ Weekend Format
+│  ├─ Tyre Rules
+│  ├─ Penalty System
+│  └─ Flags / SC / VSC
+├─ Vehicle Simulation
+│  ├─ Rigid Body
+│  ├─ Tyres
+│  ├─ Aero / Active Aero
+│  ├─ Power Unit / ERS
+│  └─ Damage / Reliability
+├─ Driver AI
+│  ├─ Raceline
+│  ├─ Behavior Tree
+│  ├─ Utility AI
+│  └─ Local RL Policy
+├─ Race Strategy
+│  ├─ Pit Window
+│  ├─ Tyre Degradation
+│  ├─ Weather
+│  └─ Safety Car Probability
+└─ Content Data
+   ├─ Teams
+   ├─ Cars
+   ├─ Tracks
+   ├─ Calendar
+   └─ Localization</code></pre>
+</section>
+
+<section id="physics">
+  <h2>6. 物理引擎設計</h2>
+  <p>建議先用遊戲級 7DOF 車身模型：縱向、側向、偏航、heave、pitch、roll，加四輪輪速。輪胎使用 Pacejka 或 Brush 模型；空力使用 ClA/CdA 查表；ERS 與燃油做能量守恆與模式切換。</p>
+  <pre><code>m * (du/dt - r*v) = ΣFx_tire - F_drag
+m * (dv/dt + r*u) = ΣFy_tire
+Iz * dr/dt        = ΣMz_tire + Mz_aero
+
+F_drag      = 0.5 * rho * Cd(mode, yaw, steer) * A * V^2
+F_downforce = 0.5 * rho * Cl(mode, rideHeight, pitch, yaw) * A * V^2
+
+Fz_front = Fz_front_static + ΔFz_long + ΔFz_aero_front + ΔFz_pitch
+Fz_rear  = Fz_rear_static  - ΔFz_long + ΔFz_aero_rear  - ΔFz_pitch
+
+Fx = TyreLongitudinal(slip_ratio, slip_angle, Fz, temp, pressure)
+Fy = TyreLateral(slip_angle, slip_ratio, Fz, camber, temp, pressure)
+
+SoC(t+dt) = clamp(SoC(t) + η_harvest * E_harvest - E_deploy / η_deploy, SoC_min, SoC_max)</code></pre>
+  <table>
+    <thead><tr><th>子系統</th><th>最低可行</th><th>高擬真版本</th></tr></thead>
+    <tbody>
+      <tr><td>車身</td><td>3DOF + 載重轉移</td><td>7DOF + 懸吊幾何</td></tr>
+      <tr><td>輪胎</td><td>Pacejka + 單一溫度</td><td>胎面 / 胎體 / 輪圈多熱容模型</td></tr>
+      <tr><td>空力</td><td>速度查表</td><td>ride height / pitch / yaw 3D map</td></tr>
+      <tr><td>ERS</td><td>每圈能量預算</td><td>每個煞車區 / 直線段部署與回收地圖</td></tr>
+      <tr><td>碰撞</td><td>區塊化損傷</td><td>零件節點 + 二次故障 + debris</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="ai">
+  <h2>7. AI 車手與策略系統</h2>
+  <p>建議不要只用一種 AI。高層使用 Behavior Tree 確保可解釋與守規；中層用 Utility AI 做風險/收益評估；局部超車、防守、輪對輪攻防可使用 RL 或 imitation learning。</p>
+  <table>
+    <thead><tr><th>AI 方法</th><th>用途</th><th>優點</th><th>缺點</th></tr></thead>
+    <tbody>
+      <tr><td>Behavior Tree</td><td>守規、進站、旗號、SC/VSC</td><td>可解釋、好除錯</td><td>高互動戰術較僵硬</td></tr>
+      <tr><td>Utility AI</td><td>超車收益、輪胎保護、ERS 節奏</td><td>易調參、可平衡</td><td>需人工設計特徵</td></tr>
+      <tr><td>RL</td><td>局部攻防、封位、輪對輪</td><td>互動性強</td><td>訓練成本高、可能 exploit</td></tr>
+      <tr><td>Offline Optimal Racing Line</td><td>基準路線、AI teacher</td><td>穩定、可重現</td><td>不處理即時對手互動</td></tr>
+    </tbody>
+  </table>
+  <pre><code>{
+  "track_id": "monza_2026",
+  "lap": 18,
+  "s": 4231.2,
+  "speed_mps": 79.4,
+  "gear": 8,
+  "throttle": 0.98,
+  "brake": 0.0,
+  "steer": -0.04,
+  "soc_mj": 2.9,
+  "fuel_kg": 34.1,
+  "tyre_wear_avg": 0.36,
+  "gap_ahead_s": 0.42,
+  "gap_behind_s": 0.91,
+  "yellow_sector": false,
+  "blue_flag": false,
+  "target_action": "attack_overtake"
+}</code></pre>
+</section>
+
+<section id="data">
+  <h2>8. 資料模型與 JSON Schema</h2>
+  <p>資料庫建議拆成 regulations、seasons、teams、cars、tracks、sessions、race_events、telemetry、replays。核心原則是所有可變內容都要綁定版本。</p>
+  <pre><code>{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "F1CarSpec",
+  "type": "object",
+  "required": ["regulation_version", "season", "team_id", "car_id", "mass", "dimensions", "aero", "power_unit", "tyres", "ers"],
+  "properties": {
+    "regulation_version": { "type": "string" },
+    "season": { "type": "integer" },
+    "team_id": { "type": "string" },
+    "car_id": { "type": "string" },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "full_team_name": { "type": "string" },
+        "chassis_code": { "type": "string" },
+        "power_unit_brand": { "type": "string" },
+        "works_status": { "enum": ["works", "customer", "interim-customer"] },
+        "source_confidence": { "enum": ["official", "estimated", "calibrated"] }
+      }
+    },
+    "mass": {
+      "type": "object",
+      "properties": {
+        "minimum_mass_kg": { "type": "number" },
+        "operating_mass_estimate_kg": { "$ref": "#/$defs/range" }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "properties": {
+        "wheelbase_mm_estimate": { "$ref": "#/$defs/range" },
+        "overall_width_mm_limit": { "type": "number" },
+        "front_track_mm_estimate": { "$ref": "#/$defs/range" },
+        "rear_track_mm_estimate": { "$ref": "#/$defs/range" }
+      }
+    },
+    "aero": {
+      "type": "object",
+      "properties": {
+        "active_modes": { "type": "array", "items": { "enum": ["corner_mode", "straight_mode", "override_mode"] } },
+        "cd_estimate": { "$ref": "#/$defs/range" },
+        "downforce_curve_ref": { "type": "string" },
+        "drag_curve_ref": { "type": "string" }
+      }
+    },
+    "power_unit": {
+      "type": "object",
+      "properties": {
+        "architecture": { "type": "string" },
+        "mgu_h_present": { "type": "boolean" },
+        "mgu_k_max_power_kw": { "type": "number" },
+        "fuel_energy_flow_cap_mj_per_h": { "type": "number" },
+        "engine_power_curve_ref": { "type": "string" }
+      }
+    },
+    "tyres": {
+      "type": "object",
+      "properties": {
+        "supplier": { "type": "string" },
+        "rim_diameter_in": { "type": "number" },
+        "compound_models": { "type": "array" }
+      }
+    },
+    "ers": {
+      "type": "object",
+      "properties": {
+        "deploy_limit_kw": { "type": "number" },
+        "soc_max_mj": { "type": "number" },
+        "mode_set": { "type": "array" }
+      }
+    }
+  },
+  "$defs": {
+    "range": {
+      "type": "object",
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "confidence": { "enum": ["low", "medium", "high"] }
+      }
+    }
+  }
+}</code></pre>
+</section>
+
+<section id="api">
+  <h2>9. API 規格</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Endpoint</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/regulations/{version}</code></td><td>取得重量、尺寸、輪胎、ERS、比賽格式與判罰規則。</td></tr>
+      <tr><td>GET</td><td><code>/api/seasons/2026/calendar</code></td><td>取得賽曆、Sprint 標記、測試日程。</td></tr>
+      <tr><td>GET</td><td><code>/api/teams/2026</code></td><td>取得 2026 車隊、PU、底盤、授權狀態。</td></tr>
+      <tr><td>GET</td><td><code>/api/cars/{car_id}</code></td><td>取得單車模擬資料。</td></tr>
+      <tr><td>POST</td><td><code>/api/sim/run-lap</code></td><td>批次單圈模擬，用於 AI teacher 與參數校正。</td></tr>
+      <tr><td>POST</td><td><code>/api/strategy/evaluate</code></td><td>輸入輪胎、天氣、SC 機率，輸出進站策略。</td></tr>
+      <tr><td>POST</td><td><code>/api/replay/encode</code></td><td>產生 replay artifact。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="engines">
+  <h2>10. Unity / Unreal 實作建議</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Unity</h3>
+      <p>適合快速原型、工具鏈、資料驅動與跨平台。建議物理核心用自訂 fixed tick，不完全依賴 WheelCollider。</p>
+      <pre><code>FixedUpdate()
+{
+  input = ReadInput();
+  vehicle.StepPhysics(input, fixedDeltaTime);
+  aero.UpdateMode(vehicle.State);
+  ers.Step(input, trackSegment);
+  tyreModel.Step(vehicle.Wheels);
+}</code></pre>
+    </div>
+    <div class="card">
+      <h3>Unreal Engine</h3>
+      <p>適合高畫質、車輛攝影機、多人連線與大型內容。建議用 Chaos 作為碰撞基礎，但高階賽車動態用自訂 movement component。</p>
+      <pre><code>UF1VehicleMovementComponent::TickComponent()
+{
+  SampleInputs();
+  StepTyres();
+  StepAero();
+  StepPowerUnitAndERS();
+  IntegrateRigidBody();
+  PublishTelemetry();
+}</code></pre>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>11. 開發路線圖</h2>
+  <table>
+    <thead><tr><th>階段</th><th>目標</th><th>交付物</th></tr></thead>
+    <tbody>
+      <tr><td>Phase 0</td><td>技術原型</td><td>單車、單賽道、基本輪胎與空力、HUD。</td></tr>
+      <tr><td>Phase 1</td><td>可玩核心</td><td>Time Trial、AI 基礎跟車、ERS、輪胎磨耗。</td></tr>
+      <tr><td>Phase 2</td><td>賽事系統</td><td>Qualifying、Race、Pit、旗號、判罰、SC/VSC。</td></tr>
+      <tr><td>Phase 3</td><td>完整賽季</td><td>24 站 calendar、車隊資料、Championship、策略 AI。</td></tr>
+      <tr><td>Phase 4</td><td>職涯 / 車隊管理</td><td>研發、合約、升級、可靠度、財務。</td></tr>
+      <tr><td>Phase 5</td><td>多人連線</td><td>權威伺服器、replay、反作弊、排名。</td></tr>
+      <tr><td>Phase 6</td><td>商業內容</td><td>授權內容或虛構品牌美術、音效、完整 UI/UX。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="prompts">
+  <h2>12. 可交給 AI 開發的提示詞</h2>
+  <h3>Prompt A：建立資料模型</h3>
+  <pre><code>你是資深遊戲資料架構師。請根據 F1 2026 open-wheel racing game 的需求，建立 PostgreSQL schema 與 JSON Schema。
+要求：
+1. 支援 regulations versioning。
+2. 支援 teams、cars、power_units、tracks、sessions、race_events、telemetry、replays。
+3. 所有 estimated engineering values 必須有 confidence、source、valid_from、valid_to。
+4. 產出 migration SQL、TypeScript types、範例 seed data。</code></pre>
+
+  <h3>Prompt B：建立物理核心</h3>
+  <pre><code>你是賽車遊戲物理引擎工程師。請用 C++ / C# 設計一個 F1-style vehicle simulation core。
+要求：
+1. fixed timestep。
+2. 支援輪胎 Pacejka / Brush 可替換。
+3. 支援 active aero modes。
+4. 支援 ERS deploy / harvest。
+5. 支援 telemetry output。
+6. 附單元測試與 replay deterministic test。</code></pre>
+
+  <h3>Prompt C：建立 AI 車手</h3>
+  <pre><code>你是 racing AI engineer。請設計 AI driver stack：
+1. Offline racing line generator。
+2. Behavior Tree for rule compliance。
+3. Utility AI for overtake / defend / pit strategy。
+4. Optional RL local policy interface。
+5. 請輸出 class diagram、state machine、測試場景與評估指標。</code></pre>
+</section>
+
+<section id="legal">
+  <h2>13. 授權與風險</h2>
+  <p>若要使用真實 Formula 1、車隊、車手、Logo、官方圖像、車身塗裝、賽道外觀、官方計時資料，通常需要授權。最務實的產品策略是先做「規則真實、品牌虛構」版本，保留資料結構中 licensed_content 欄位，未來取得授權後再替換為真實內容。</p>
+  <table>
+    <thead><tr><th>內容</th><th>風險</th><th>替代方案</th></tr></thead>
+    <tbody>
+      <tr><td>F1 / Formula 1 / Grand Prix 名稱與 Logo</td><td>高</td><td>使用虛構聯盟名稱。</td></tr>
+      <tr><td>真實車隊與車手</td><td>高</td><td>使用虛構隊名、虛構車手與自製塗裝。</td></tr>
+      <tr><td>真實賽道輪廓與場館</td><td>中高</td><td>創作受啟發但非 1:1 的賽道。</td></tr>
+      <tr><td>官方 TV graphics / HUD</td><td>高</td><td>自製 HUD 視覺語言。</td></tr>
+      <tr><td>官方計時與賽果資料</td><td>中高</td><td>使用自產模擬資料或取得資料授權。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sources">
+  <h2>14. 主要參考來源</h2>
+  <ol class="footnotes">
+    <li>FIA 2026 Formula 1 Technical Regulations / Sporting Regulations / Regulation Hub。</li>
+    <li>Formula 1 官方 2026 Teams、Calendar、Sprint Calendar、2026 Regulations explainer。</li>
+    <li>FIA Cadillac、Audi、GM Performance Power Units、2026 PU supplier registrations 官方資訊。</li>
+    <li>Mercedes、Ferrari、McLaren、Red Bull Ford、Alpine、Audi、Aston Martin Honda 等官方公告。</li>
+    <li>賽車物理、輪胎熱模型、minimum lap time、racing line optimization、GT Sophy / racing RL 等學術與工程文獻。</li>
+    <li>Formula 1 官方品牌使用指南與 WIPO 商標 / 著作權基礎說明。</li>
+  </ol>
+  <p class="small">註：本 HTML 為開發規格用途。真實 F1 內容若用於商業遊戲，應另行取得授權並由法律顧問審核。</p>
+</section>
+</main>
+</body>
+</html>

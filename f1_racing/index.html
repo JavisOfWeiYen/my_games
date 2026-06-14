@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Apex GP — Racing Sim</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif; background: #0a0e16; color: #eaf0ff; }
+  #game { position: fixed; inset: 0; }
+  #view { display: block; width: 100%; height: 100%; }
+
+  #bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 6; }
+  #bar button {
+    border: 1px solid rgba(255,255,255,.12); border-radius: 11px; padding: 8px 13px;
+    font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .03em; color: #eaf0ff;
+    background: rgba(16,22,36,.72); backdrop-filter: blur(4px); cursor: pointer;
+  }
+  #bar button:active { transform: scale(.95); }
+
+  /* touch controls */
+  #pad { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+  #pad .grp { position: absolute; bottom: 22px; display: flex; gap: 13px; }
+  #pad .left { left: 18px; } #pad .right { right: 18px; }
+  #pad button {
+    pointer-events: auto; width: 74px; height: 74px; border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.12); font-size: 24px; color: #eaf0ff; cursor: pointer;
+    background: rgba(16,22,36,.5); display: flex; align-items: center; justify-content: center; touch-action: none;
+  }
+  #pad button:active { transform: scale(.94); background: rgba(40,52,78,.72); }
+  #pad .gas { background: rgba(64,210,150,.32); border-color: rgba(64,210,150,.5); }
+  #pad .brake { background: rgba(255,92,110,.32); border-color: rgba(255,92,110,.5); }
+  #pad .hand { width: 60px; height: 60px; font-size: 12px; background: rgba(255,179,71,.30); border-color: rgba(255,179,71,.5); }
+
+  #overlay {
+    position: absolute; inset: 0; z-index: 9; background: rgba(8,11,18,.86); backdrop-filter: blur(5px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+    background: linear-gradient(90deg,#46e0a0,#5db8ff,#c39bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #overlay p { margin: 0; font-size: 14px; line-height: 1.7; color: #9fb0cf; max-width: 460px; }
+  #overlay .keys { font-size: 12px; color: #6f80a0; }
+  #overlay button {
+    border: none; border-radius: 12px; padding: 13px 30px; font-family: inherit; font-size: 16px; font-weight: 700;
+    letter-spacing: .05em; color: #07101f; background: linear-gradient(90deg,#46e0a0,#5db8ff); cursor: pointer;
+  }
+  #overlay button:active { transform: scale(.96); }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="view"></canvas>
+
+  <div id="bar">
+    <button id="bReset">↺ Reset 回起點</button>
+    <button id="bPause">⏸ Pause</button>
+  </div>
+
+  <div id="pad">
+    <div class="grp left">
+      <button id="bLeft">◀</button>
+      <button id="bRight">▶</button>
+    </div>
+    <div class="grp right">
+      <button class="hand" id="bHand"><span>手煞</span></button>
+      <button class="brake" id="bBrake">▼</button>
+      <button class="gas" id="bGas">▲</button>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <h1>Apex GP</h1>
+    <p>A top-down racing <b>simulator</b> — real grip, weight transfer and slides. Brake early, hit the apex, feed the throttle out of the corner. 真實操控的俯視賽車模擬：抓煞車點、切 Apex、出彎再補油。</p>
+    <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · R reset · P pause<br>📱 use the on-screen buttons</p>
+    <button id="ovBtn">▶ Drive 開始</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  Apex GP — top-down racing simulator (Phase 0)
+//  Real-ish car physics (slip angles, weight transfer, grip
+//  limit, lock-ups, catchable slides) on a hand-built circuit,
+//  with a rotating follow camera and a polished look.
+//  Sections: 1 CONFIG · 2 STATE · 3 TRACK · 4 SURFACE ·
+//  5 PHYSICS · 6 CAMERA · 7 RENDER · 8 HUD · 9 AUDIO ·
+//  10 LOOP · 11 CONTROLS
+// ============================================================
+const $ = s => document.querySelector(s);
+const view = $('#view'), ctx = view.getContext('2d');
+
+// ===== 1. CONFIG (physics in SI-ish units; track in metres) =====
+const MASS = 780, INERTIA = 1500;                // higher inertia = steadier, less snap-spin
+const A = 1.25, B = 1.55, WHEELBASE = A + B;     // CG-to-front, CG-to-rear
+const CA_F = -5.0, CA_R = -7.2;                  // much stiffer rear = strong understeer bias (stable)
+const MAX_GRIP = 3.3;                            // base friction (×weight) — more grip = makeable mid-speed corners
+const ENGINE = 11500, BRAKE_F = 9000;            // N
+const RESIST = 42, DRAG = 1.35;                  // rolling + air drag (drag sets top speed)
+const MAX_STEER = 0.52;                          // rad at low speed (more lock = tighter corners)
+const HALF_W = 9.5, KERB_W = 1.4;                // track half-width, kerb width (wider = more room for error)
+const G = 9.8;
+
+// ===== 2. STATE =====
+const car = { x: 0, y: 0, a: 0, vx: 0, vy: 0, av: 0, steer: 0, throttle: 0, brake: 0, hand: 0 };
+let track = null;
+let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
+let running = false, paused = false, perf = 0, lastT = 0;
+let W = 0, H = 0, dpr = 1, zoom = 8.0, camX = 0, camY = 0, camA = 0, shake = 0;
+const marks = [];            // skid marks (world coords), capped
+const smoke = [];            // tyre-smoke particles, capped
+const input = { gas: 0, brake: 0, left: 0, right: 0, hand: 0 };
+let grassPat = null, asphaltPat = null;
+best = +(localStorage.getItem('apexgp-best') || 0);
+
+// ===== 3. TRACK (Catmull-Rom through control points -> centreline) =====
+const CONTROL = [
+  [220,820],[900,820],[1180,720],[1330,560],[1240,415],[1370,300],[1180,200],
+  [935,250],[820,420],[660,440],[560,355],[420,445],[280,360],[168,490],[180,690],
+];
+function catmull(p0, p1, p2, p3, t) {
+  const t2 = t * t, t3 = t2 * t;
+  return {
+    x: 0.5 * (2*p1[0] + (-p0[0]+p2[0])*t + (2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2 + (-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
+    y: 0.5 * (2*p1[1] + (-p0[1]+p2[1])*t + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2 + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3),
+  };
+}
+function buildTrack() {
+  const cp = CONTROL, n = cp.length, raw = [], SUB = 26;
+  for (let i = 0; i < n; i++) {
+    const p0 = cp[(i-1+n)%n], p1 = cp[i], p2 = cp[(i+1)%n], p3 = cp[(i+2)%n];
+    for (let j = 0; j < SUB; j++) raw.push(catmull(p0, p1, p2, p3, j / SUB));
+  }
+  const N = raw.length, pts = [];
+  let s = 0;
+  for (let i = 0; i < N; i++) {
+    const a = raw[i], b = raw[(i+1)%N], p = raw[(i-1+N)%N];
+    const tx = b.x - p.x, ty = b.y - p.y, tl = Math.hypot(tx, ty) || 1;
+    const ux = tx / tl, uy = ty / tl;          // tangent
+    if (i > 0) s += Math.hypot(a.x - raw[i-1].x, a.y - raw[i-1].y);
+    // curvature: heading change to next
+    const b2 = raw[(i+2)%N], n2x = b2.x - a.x, n2y = b2.y - a.y;
+    const ang1 = Math.atan2(uy, ux), ang2 = Math.atan2(n2y, n2x);
+    let dA = ang2 - ang1; while (dA > Math.PI) dA -= 2*Math.PI; while (dA < -Math.PI) dA += 2*Math.PI;
+    pts.push({ x: a.x, y: a.y, nx: -uy, ny: ux, ux, uy, s, curv: dA });
+  }
+  let total = s + Math.hypot(raw[N-1].x - raw[0].x, raw[N-1].y - raw[0].y);
+  // minimap bounds
+  let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+  for (const p of pts) { minx = Math.min(minx, p.x); miny = Math.min(miny, p.y); maxx = Math.max(maxx, p.x); maxy = Math.max(maxy, p.y); }
+  track = { pts, total, minx, miny, maxx, maxy };
+}
+
+// ===== 4. SURFACE (nearest centreline point -> lateral offset + arc-pos) =====
+let nearIdx = 0;
+function querySurface(px, py) {
+  const pts = track.pts, N = pts.length;
+  let best = 1e18, bi = 0;
+  for (let k = -40; k <= 40; k++) {            // windowed search around last index
+    const i = ((nearIdx + k) % N + N) % N, p = pts[i];
+    const d = (px - p.x) ** 2 + (py - p.y) ** 2;
+    if (d < best) { best = d; bi = i; }
+  }
+  if (best > 90 * 90) { best = 1e18;           // lost — full search
+    for (let i = 0; i < N; i++) { const p = pts[i], d = (px - p.x) ** 2 + (py - p.y) ** 2; if (d < best) { best = d; bi = i; } }
+  }
+  nearIdx = bi;
+  const p = pts[bi];
+  const lat = (px - p.x) * p.nx + (py - p.y) * p.ny;   // signed distance from centre
+  const al = Math.abs(lat);
+  let surf = 'grass';
+  if (al <= HALF_W) surf = 'road';
+  else if (al <= HALF_W + KERB_W) surf = 'kerb';
+  return { surf, lat, s: p.s, p };
+}
+
+// ===== 5. PHYSICS (Marco-Monster style slip model) =====
+function resetCar() {
+  const p = track.pts[0];
+  car.x = p.x; car.y = p.y; car.a = Math.atan2(p.uy, p.ux);
+  car.vx = car.vy = car.av = car.steer = 0;
+  nearIdx = 0; lastS = 0;
+}
+function step(dt) {
+  // steering: ease toward input, reduce authority with speed
+  const speed = Math.hypot(car.vx, car.vy);
+  const steerTarget = (input.right - input.left) * MAX_STEER * (1 - Math.min(0.55, speed / 105));   // +steer = turn right (canvas y down); keep more lock at speed
+  car.steer += (steerTarget - car.steer) * Math.min(1, dt * 6);                                    // smoother steering input
+
+  const cs = Math.cos(car.a), sn = Math.sin(car.a);
+  // velocity in car frame: vlong (forward), vlat (right)
+  let vlong = cs * car.vx + sn * car.vy;
+  let vlat = -sn * car.vx + cs * car.vy;
+
+  // surface affects available grip + resistance
+  const surf = querySurface(car.x, car.y);
+  let gripMul = 1, resMul = 1;
+  if (surf.surf === 'grass') { gripMul = 0.5; resMul = 4.5; }   // slows you, but you can still drive back on
+  else if (surf.surf === 'kerb') { gripMul = 0.85; resMul = 1.6; }
+
+  // downforce raises grip with speed
+  const grip = (MAX_GRIP + speed * speed * 0.00018) * gripMul;   // downforce raises grip with speed
+
+  // slip angles
+  const eps = 2.0;
+  const rot = Math.atan2(car.av * B, Math.abs(vlong) + eps);
+  const side = Math.atan2(vlat, Math.abs(vlong) + eps);
+  const slipF = side + Math.atan2(car.av * A, Math.abs(vlong) + eps) - car.steer * Math.sign(vlong || 1);
+  const slipR = side - rot;
+
+  const wF = MASS * G * (B / WHEELBASE), wR = MASS * G * (A / WHEELBASE);
+  const sgn = Math.sign(vlong || 1);
+  const drive = car.throttle * ENGINE;                         // engine -> rear axle
+  const brk = car.brake * BRAKE_F + (car.hand ? BRAKE_F * 0.9 : 0);
+  // longitudinal weight transfer: accel -> rear, brake -> front
+  const dW = clamp(((drive - brk * sgn) / MASS) * 0.03, -0.35, 0.35);
+  const loadF = wF * (1 - dW), loadR = wR * (1 + dW);
+
+  // lateral tyre force: Fy = Ca * slipAngle (Ca is negative, so the force OPPOSES
+  // the slip -> self-stabilising). Do NOT negate Ca here: the extra minus made the
+  // force feed the slip back positively, so the car spun out the instant you steered.
+  let flatF = clamp(CA_F * slipF, -grip, grip) * loadF;
+  let flatR = clamp(CA_R * slipR, -grip, grip) * loadR;
+  // longitudinal force per axle (brake bias 45/55, engine on rear)
+  let longF = -brk * 0.45 * sgn;
+  let longR = drive - brk * 0.55 * sgn;
+  // friction circle: a tyre's combined long+lat force can't exceed its grip,
+  // so you can't brake & turn (or power & turn) at the limit simultaneously
+  { const m = grip * loadF, c = Math.hypot(longF, flatF); if (c > m) { const s = m / c; longF *= s; flatF *= s; } }
+  { const m = grip * loadR, c = Math.hypot(longR, flatR); if (c > m) { const s = m / c; longR *= s; flatR *= s; } }
+  if (car.hand) flatR *= 0.55;                                 // handbrake breaks the rear loose
+
+  const ftr = longF + longR;
+  const fx = ftr - Math.sin(car.steer) * flatF - (RESIST * resMul) * vlong - DRAG * vlong * Math.abs(vlong);
+  const fy = Math.cos(car.steer) * flatF + flatR - (RESIST * resMul) * vlat - DRAG * vlat * Math.abs(vlat);
+  const torque = A * Math.cos(car.steer) * flatF - B * flatR;
+
+  // integrate (car frame)
+  const ax = fx / MASS, ay = fy / MASS;
+  vlong += ax * dt; vlat += ay * dt;
+  car.av += (torque / INERTIA) * dt;
+
+  // settle at very low speed (kill jitter/spin)
+  if (Math.abs(vlong) < 0.6 && !car.throttle && Math.abs(vlat) < 0.6) { vlong *= 0.7; vlat *= 0.7; car.av *= 0.6; }
+  car.av *= (1 - Math.min(0.92, dt * 3.0));   // stronger yaw damping (kills spin oscillation)
+  const maxYaw = Math.max(0.5, 2.4 - speed * 0.026);
+  car.av = clamp(car.av, -maxYaw, maxYaw);    // hard anti-spin: cap yaw rate (tighter at speed)
+
+  // back to world
+  car.vx = cs * vlong - sn * vlat;
+  car.vy = sn * vlong + cs * vlat;
+  const sp = Math.hypot(car.vx, car.vy); if (sp > 100) { car.vx *= 100 / sp; car.vy *= 100 / sp; }  // hard speed cap
+  car.a += car.av * dt;
+  car.x += car.vx * dt;
+  car.y += car.vy * dt;
+
+  // track limits: contain the car in a runoff band. The barrier scrubs speed but
+  // lets the car SLIDE along it — cancel only the into-wall (normal) velocity and
+  // keep the along-wall (tangential) part, so a nose-in crash can still be driven
+  // out of instead of dead-stopping the car against the wall forever.
+  const lim = querySurface(car.x, car.y), LIMIT = HALF_W + 12;
+  if (Math.abs(lim.lat) > LIMIT) {
+    const sg = lim.lat > 0 ? 1 : -1, lp = lim.p;
+    car.x = lp.x + lp.nx * sg * LIMIT; car.y = lp.y + lp.ny * sg * LIMIT;
+    const vn = car.vx * lp.nx + car.vy * lp.ny;          // velocity into the wall
+    if (vn * sg > 0) { car.vx -= vn * lp.nx; car.vy -= vn * lp.ny; }  // remove only outward part
+    car.vx *= 0.82; car.vy *= 0.82; car.av *= 0.7;       // scrub speed but keep yaw so it can rotate
+    car.vx -= lp.nx * sg * 2.2; car.vy -= lp.ny * sg * 2.2;          // nudge back onto track -> never dead-stuck
+  }
+
+  // skid / smoke when a tyre is sliding
+  const slipMag = Math.abs(slipF) + Math.abs(slipR);
+  const sliding = (slipMag > 0.32 && speed > 8) || (car.hand && speed > 6) || (surf.surf === 'grass' && speed > 12);
+  if (sliding) layMarks(speed);
+
+  return { surf, speed, vlong, slipMag, sliding };
+}
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+function layMarks(speed) {
+  const cs = Math.cos(car.a), sn = Math.sin(car.a);
+  for (const side of [-0.62, 0.62]) {
+    const rx = car.x - cs * 1.4 - sn * side, ry = car.y - sn * 1.4 + cs * side;
+    marks.push({ x: rx, y: ry });
+  }
+  if (marks.length > 1600) marks.splice(0, marks.length - 1600);
+  if (smoke.length < 140 && Math.random() < 0.6) {
+    const rx = car.x - cs * 1.6, ry = car.y - sn * 1.6;
+    smoke.push({ x: rx, y: ry, life: 1, sz: 1.4 + Math.random() * 1.6, vx: (Math.random()-.5)*2, vy: (Math.random()-.5)*2 });
+  }
+}
+
+// ===== 6. CAMERA (first-person / cockpit: at the driver, eye level) + ground projection =====
+let camYaw = 0;
+const BACK = 1.3, CAMH = 2.7, HORIZON = 0.44, FOCAL_BASE = 330;
+let _camx = 0, _camy = 0, _focal = FOCAL_BASE, _horizonY = 0, _cyaw = 0;
+function updateCam(dt) {
+  let dA = car.a - camYaw; while (dA > Math.PI) dA -= 2*Math.PI; while (dA < -Math.PI) dA += 2*Math.PI;
+  camYaw += dA * Math.min(1, dt * 5);     // smooth yaw so spins don't whip the view
+  shake *= Math.pow(0.02, dt);
+}
+function setupProjection() {
+  _cyaw = camYaw;
+  _camx = car.x - Math.cos(camYaw) * BACK;
+  _camy = car.y - Math.sin(camYaw) * BACK;
+  _horizonY = H * HORIZON;
+  _focal = FOCAL_BASE * (H / 600);
+}
+// project a ground point (world, z=0) to screen via the chase camera
+function project(wx, wy) {
+  const dx = wx - _camx, dy = wy - _camy;
+  const c = Math.cos(_cyaw), s = Math.sin(_cyaw);
+  const fwd = dx * c + dy * s;
+  if (fwd < 0.6) return null;             // behind the camera
+  const right = -dx * s + dy * c;
+  const sc = _focal / fwd;
+  return { x: W / 2 + right * sc, y: _horizonY + CAMH * sc, sc, fwd };
+}
+
+// ===== 7. RENDER =====
+function makePatterns() {
+  // grass tile
+  let g = document.createElement('canvas'); g.width = g.height = 64; let gc = g.getContext('2d');
+  gc.fillStyle = '#33502f'; gc.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 200; i++) { gc.fillStyle = Math.random() < .5 ? 'rgba(60,90,52,.6)' : 'rgba(40,64,38,.6)'; gc.fillRect(Math.random()*64, Math.random()*64, 2, 2); }
+  grassPat = ctx.createPattern(g, 'repeat');
+  // asphalt tile
+  let a = document.createElement('canvas'); a.width = a.height = 64; let ac = a.getContext('2d');
+  ac.fillStyle = '#2e3138'; ac.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 260; i++) { ac.fillStyle = Math.random() < .5 ? 'rgba(54,58,66,.7)' : 'rgba(36,39,45,.7)'; ac.fillRect(Math.random()*64, Math.random()*64, 2, 2); }
+  asphaltPat = ctx.createPattern(a, 'repeat');
+}
+function poly4(a, b, c, d, fill) { ctx.fillStyle = fill; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath(); ctx.fill(); }
+function render() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const hz = H * HORIZON;
+  let sky = ctx.createLinearGradient(0, 0, 0, hz);
+  sky.addColorStop(0, '#16203a'); sky.addColorStop(1, '#46597c'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+  let gr = ctx.createLinearGradient(0, hz, 0, H);
+  gr.addColorStop(0, '#33532e'); gr.addColorStop(1, '#22401c'); ctx.fillStyle = gr; ctx.fillRect(0, hz, W, H - hz);
+  setupProjection();
+  drawRoad();
+  drawMarksP();
+  drawSmokeP();
+  vignette();
+  drawWheel();
+  drawHud();
+}
+// interpolated road cross-section ("rib") at parameter t in [0,1] between pts[i] and pts[i+1]
+function rib(i, t) {
+  const N = track.pts.length, a = track.pts[i], b = track.pts[(i + 1) % N];
+  let nx = a.nx + (b.nx - a.nx) * t, ny = a.ny + (b.ny - a.ny) * t;
+  const l = Math.hypot(nx, ny) || 1;
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, nx: nx / l, ny: ny / l };
+}
+function drawRoad() {
+  const pts = track.pts, N = pts.length, P = (x, y) => project(x, y), quads = [];
+  for (let n = -4; n < 160; n++) {
+    const i = ((nearIdx + n) % N + N) % N, a = pts[i], b = pts[(i + 1) % N];
+    // subdivide the nearby segments: centreline points can be ~26m apart on long
+    // straights, so a single near segment would straddle the cockpit camera and be
+    // culled, leaving a hole. Fine ribs keep the foreground filled.
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    const sub = n < 16 ? Math.max(1, Math.min(10, Math.round(segLen / 5))) : 1;
+    for (let j = 0; j < sub; j++) {
+      const r0 = rib(i, j / sub), r1 = rib(i, (j + 1) / sub);
+      const aL = P(r0.x + r0.nx*HALF_W, r0.y + r0.ny*HALF_W), aR = P(r0.x - r0.nx*HALF_W, r0.y - r0.ny*HALF_W);
+      const bL = P(r1.x + r1.nx*HALF_W, r1.y + r1.ny*HALF_W), bR = P(r1.x - r1.nx*HALF_W, r1.y - r1.ny*HALF_W);
+      if (!aL || !aR || !bL || !bR) continue;
+      quads.push({ r0, r1, i, j, aL, aR, bL, bR, fwd: Math.min(aL.fwd, bL.fwd) });
+    }
+  }
+  quads.sort((p, q) => q.fwd - p.fwd);            // far -> near (painter's order)
+  for (const q of quads) {
+    const { r0, r1, i, j, aL, aR, bL, bR } = q;
+    poly4(aL, aR, bR, bL, (Math.floor(i/4)%2) ? '#2b2e35' : '#31343c');   // asphalt (subtle banding)
+    // white edge lines
+    const eo = HALF_W - 0.55;
+    const aLi = P(r0.x + r0.nx*eo, r0.y + r0.ny*eo), aRi = P(r0.x - r0.nx*eo, r0.y - r0.ny*eo);
+    const bLi = P(r1.x + r1.nx*eo, r1.y + r1.ny*eo), bRi = P(r1.x - r1.nx*eo, r1.y - r1.ny*eo);
+    if (aLi && bLi) poly4(aL, aLi, bLi, bL, 'rgba(238,242,255,.8)');
+    if (aRi && bRi) poly4(aRi, aR, bR, bRi, 'rgba(238,242,255,.8)');
+    // kerbs on the inside of corners
+    if (Math.abs(pts[i].curv) > 0.02) {
+      const side = pts[i].curv > 0 ? 1 : -1, o1 = HALF_W, o2 = HALF_W + KERB_W;
+      const k1a = P(r0.x + r0.nx*side*o1, r0.y + r0.ny*side*o1), k2a = P(r0.x + r0.nx*side*o2, r0.y + r0.ny*side*o2);
+      const k1b = P(r1.x + r1.nx*side*o1, r1.y + r1.ny*side*o1), k2b = P(r1.x + r1.nx*side*o2, r1.y + r1.ny*side*o2);
+      if (k1a && k2a && k1b && k2b) poly4(k1a, k2a, k2b, k1b, ((i + j) % 2) ? '#e23b3b' : '#eef2fb');
+    }
+    // start/finish checker
+    if (i < 2) {
+      for (let c = 0; c < 8; c++) {
+        const t1 = -HALF_W + 2*HALF_W*(c/8), t2 = -HALF_W + 2*HALF_W*((c+1)/8);
+        const p1 = P(r0.x + r0.nx*t1, r0.y + r0.ny*t1), p2 = P(r0.x + r0.nx*t2, r0.y + r0.ny*t2);
+        const p3 = P(r1.x + r1.nx*t2, r1.y + r1.ny*t2), p4 = P(r1.x + r1.nx*t1, r1.y + r1.ny*t1);
+        if (p1 && p2 && p3 && p4) poly4(p1, p2, p3, p4, ((c + i + j) % 2) ? '#10131a' : '#eef2fb');
+      }
+    }
+  }
+}
+function drawMarksP() {
+  ctx.fillStyle = 'rgba(18,18,22,.5)';
+  for (const m of marks) { const p = project(m.x, m.y); if (!p) continue; const s = Math.min(6, Math.max(1, p.sc * 0.5)); ctx.fillRect(p.x - s/2, p.y - s/2, s, s); }
+}
+function drawSmokeP() {
+  for (const sm of smoke) { const p = project(sm.x, sm.y); if (!p) continue; ctx.globalAlpha = sm.life * 0.4; ctx.fillStyle = '#dde2ec'; const r = Math.min(70, p.sc * sm.sz); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+function rrectP(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function drawWheel() {
+  // first-person: an F1-style wheel anchored to the bottom of the screen, rotating
+  // with the actual front-wheel angle. Its pivot is below the frame so only the
+  // top half shows (as if seen from the driver's seat).
+  const R = H * 0.40, cx = W / 2, cy = H + R * 0.42;
+  const ang = clamp(car.steer * 3.2, -2.0, 2.0);        // amplify the modest road-wheel angle
+  // dark cockpit base under the wheel
+  ctx.fillStyle = 'rgba(8,10,15,.92)'; ctx.fillRect(0, H - R * 0.36, W, R * 0.5);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  // rim
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0d0f14'; ctx.lineWidth = R * 0.14;
+  ctx.beginPath(); ctx.arc(0, 0, R, Math.PI * 1.06, Math.PI * 1.94); ctx.stroke();   // open at the bottom
+  ctx.strokeStyle = 'rgba(120,130,150,.18)'; ctx.lineWidth = R * 0.03;               // rim highlight
+  ctx.beginPath(); ctx.arc(0, 0, R * 1.05, Math.PI * 1.10, Math.PI * 1.90); ctx.stroke();
+  // side grips
+  ctx.fillStyle = '#1b1f27';
+  rrectP(-R * 0.66, -R * 0.34, R * 0.26, R * 0.62, R * 0.10); ctx.fill();
+  rrectP( R * 0.40, -R * 0.34, R * 0.26, R * 0.62, R * 0.10); ctx.fill();
+  // spokes + central hub
+  ctx.fillStyle = '#15191f';
+  rrectP(-R * 0.42, -R * 0.10, R * 0.84, R * 0.20, R * 0.06); ctx.fill();            // horizontal spoke
+  rrectP(-R * 0.30, -R * 0.40, R * 0.60, R * 0.62, R * 0.10); ctx.fill();            // hub plate
+  // shift LEDs across the top of the hub
+  for (let i = 0; i < 9; i++) {
+    ctx.fillStyle = i < 4 ? '#46e0a0' : i < 7 ? '#ffd24a' : '#ff4d4d';
+    ctx.beginPath(); ctx.arc(-R * 0.24 + i * R * 0.06, -R * 0.30, R * 0.022, 0, 7); ctx.fill();
+  }
+  // top-centre stripe so the steering angle reads clearly
+  ctx.fillStyle = '#e23b41'; rrectP(-R * 0.045, -R * 1.04, R * 0.09, R * 0.16, 2); ctx.fill();
+  ctx.restore();
+}
+function vignette() {
+  const g = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.72);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.42)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+// ===== 8. HUD =====
+function fmt(ms) { if (!ms) return '--:--.--'; const t = ms/1000; const m = Math.floor(t/60); return m + ':' + (t%60).toFixed(2).padStart(5,'0'); }
+function drawHud() {
+  const speed = Math.hypot(car.vx, car.vy), kmh = Math.round(speed * 3.6);
+  const gear = speed < 1 ? 'N' : Math.min(8, 1 + Math.floor(speed / 12));
+  // speed (bottom centre)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#eef2fb'; ctx.font = '800 54px system-ui, sans-serif'; ctx.fillText(kmh, W/2, H - 38);
+  ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillText('KM/H', W/2, H - 20);
+  // lap / best / gear (top-left telemetry)
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + lap, 16, 30);
+  ctx.fillStyle = '#eef2fb'; ctx.font = '800 26px system-ui, sans-serif'; ctx.fillText(fmt(lapNow), 16, 58);
+  ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 78);
+  ctx.fillStyle = '#46e0a0'; ctx.font = '700 18px system-ui, sans-serif'; ctx.fillText('GEAR ' + gear, 16, 104);
+  drawMinimap();
+}
+function drawMinimap() {
+  const pad = 14, size = 132, x0 = W - size - pad, y0 = pad;
+  const tw = track.maxx - track.minx, th = track.maxy - track.miny;
+  const sc = (size - 16) / Math.max(tw, th);
+  ctx.fillStyle = 'rgba(12,16,26,.55)'; rrectP(x0, y0, size, size, 14); ctx.fill();
+  const mx = x0 + (size - tw * sc) / 2, my = y0 + (size - th * sc) / 2;
+  const TX = p => mx + (p.x - track.minx) * sc, TY = p => my + (p.y - track.miny) * sc;
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.beginPath();
+  const pts = track.pts; for (let i = 0; i <= pts.length; i++) { const p = pts[i % pts.length]; i ? ctx.lineTo(TX(p), TY(p)) : ctx.moveTo(TX(p), TY(p)); } ctx.stroke();
+  // start/finish dot + car
+  ctx.fillStyle = '#46e0a0'; ctx.beginPath(); ctx.arc(TX(pts[0]), TY(pts[0]), 3, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(mx + (car.x - track.minx) * sc, my + (car.y - track.miny) * sc, 3.5, 0, 7); ctx.fill();
+}
+
+// ===== 9. AUDIO (engine) =====
+let actx, master, eOsc, eOsc2, eGain, eLfo, eLfoGain, audioReady = false;
+function initAudio() {
+  if (actx) { actx.resume(); return; }
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  master = actx.createGain(); master.gain.value = 0.45; master.connect(actx.destination);
+  const real = new Float32Array([0, 1, 0.5, 0.34, 0.42, 0.26, 0.2, 0.14]);
+  const wave = actx.createPeriodicWave(real, new Float32Array(real.length));
+  const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1600;
+  eGain = actx.createGain(); eGain.gain.value = 0;
+  eOsc = actx.createOscillator(); eOsc.setPeriodicWave(wave); eOsc.frequency.value = 55;
+  eOsc2 = actx.createOscillator(); eOsc2.type = 'sine'; eOsc2.frequency.value = 27;
+  const sub = actx.createGain(); sub.gain.value = 0.5;
+  eOsc.connect(f); eOsc2.connect(sub); sub.connect(f); f.connect(eGain); eGain.connect(master);
+  eLfo = actx.createOscillator(); eLfo.type = 'sawtooth'; eLfo.frequency.value = 25;
+  eLfoGain = actx.createGain(); eLfoGain.gain.value = 0; eLfo.connect(eLfoGain); eLfoGain.connect(eGain.gain);
+  eOsc.start(); eOsc2.start(); eLfo.start(); audioReady = true;
+}
+function updateAudio() {
+  if (!audioReady) return;
+  const live = running && !paused, now = actx.currentTime;
+  const speed = Math.hypot(car.vx, car.vy), spd = Math.min(1, speed / 92);
+  const gear = Math.floor(spd * 8), rpmFrac = (spd * 8) % 1;
+  const fr = 46 + gear * 5 + rpmFrac * 150 + car.throttle * 20;
+  eOsc.frequency.setTargetAtTime(fr, now, 0.05);
+  eOsc2.frequency.setTargetAtTime(fr * 0.5, now, 0.05);
+  eLfo.frequency.setTargetAtTime(Math.max(8, fr * 0.5), now, 0.05);
+  const vol = live ? 0.06 + spd * 0.10 : 0;
+  eGain.gain.setTargetAtTime(vol, now, 0.08);
+  eLfoGain.gain.setTargetAtTime(live ? vol * 0.5 : 0, now, 0.08);
+}
+
+// ===== 10. LOOP =====
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (!lastT) lastT = t;
+  let dt = (t - lastT) / 1000; lastT = t; perf = t;
+  if (running && !paused) {
+    dt = Math.min(dt, 0.033);
+    car.throttle = input.gas; car.brake = input.brake; car.hand = input.hand;
+    // sub-step physics for stability
+    const sub = 2; for (let i = 0; i < sub; i++) { const r = step(dt / sub); if (i === sub - 1 && r.surf.surf === 'grass' && r.speed > 30) shake = 2.2; }
+    lapNow = perf - lapStart;
+    // lap timing via arc-position wrap
+    const s = querySurface(car.x, car.y).s;
+    if (lastS > track.total * 0.7 && s < track.total * 0.25) {     // crossed finish forward
+      if (started && lap >= 1 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem('apexgp-best', Math.round(best)); } catch (e) {} }
+      lap++; lapStart = perf; lapNow = 0;
+    }
+    lastS = s;
+  }
+  // age smoke
+  for (const sm of smoke) { sm.x += sm.vx * 0.02; sm.y += sm.vy * 0.02; sm.sz += 0.06; sm.life -= 0.02; }
+  for (let i = smoke.length - 1; i >= 0; i--) if (smoke[i].life <= 0) smoke.splice(i, 1);
+  updateCam(0.016);
+  render();
+  updateAudio();
+}
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  view.width = W * dpr; view.height = H * dpr; view.style.width = W + 'px'; view.style.height = H + 'px';
+}
+window.addEventListener('resize', resize);
+
+// ===== 11. CONTROLS =====
+function startGame() {
+  resetCar(); camYaw = car.a;
+  lap = 1; lapStart = perf; lapNow = 0; lastS = 0;
+  initAudio(); $('#overlay').classList.add('hidden'); running = true; paused = false; started = 1;
+}
+function resetToStart() { resetCar(); camYaw = car.a; lap = Math.max(1, lap); lapStart = perf; lapNow = 0; }
+function togglePause() {
+  if (!started || !running) return; paused = !paused; const ov = $('#overlay');
+  if (paused) { ov.querySelector('h1').textContent = 'Paused'; ov.querySelector('p').innerHTML = 'Take a breather. 暫停中'; ov.querySelector('#ovBtn').textContent = '▶ Resume 繼續'; ov.classList.remove('hidden'); }
+  else ov.classList.add('hidden');
+}
+$('#ovBtn').addEventListener('click', () => { if (paused) togglePause(); else startGame(); });
+$('#bReset').addEventListener('click', resetToStart);
+$('#bPause').addEventListener('click', togglePause);
+
+const keymap = { ArrowUp:'gas', w:'gas', W:'gas', ArrowDown:'brake', s:'brake', S:'brake', ArrowLeft:'left', a:'left', A:'left', ArrowRight:'right', d:'right', D:'right', ' ':'hand' };
+addEventListener('keydown', e => {
+  if (e.key === 'p' || e.key === 'P') { togglePause(); e.preventDefault(); return; }
+  if (e.key === 'r' || e.key === 'R') { resetToStart(); e.preventDefault(); return; }
+  if (e.key === 'Enter' && !started) { startGame(); return; }
+  const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
+});
+addEventListener('keyup', e => { const k = keymap[e.key]; if (k) { input[k] = 0; e.preventDefault(); } });
+function hold(sel, key) {
+  const el = $(sel);
+  const on = e => { e.preventDefault(); input[key] = 1; try { el.setPointerCapture(e.pointerId); } catch (x) {} };
+  const off = e => { e.preventDefault(); input[key] = 0; };
+  el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off);
+}
+hold('#bGas', 'gas'); hold('#bBrake', 'brake'); hold('#bLeft', 'left'); hold('#bRight', 'right'); hold('#bHand', 'hand');
+
+// ===== start =====
+buildTrack(); resetCar(); camYaw = car.a; resize(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
