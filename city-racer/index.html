@@ -188,7 +188,7 @@ function addRoad(enter, hold, leave, curve, y) {
   for (let h = 0; h < hold; h++, n++) addSegment(curve, easeInOut(startY, endY, n / total));
   for (let l = 0; l < leave; l++, n++) addSegment(easeInOut(curve, 0, l / leave), easeInOut(startY, endY, n / total));
 }
-const LEN = { S: 25, M: 50, L: 100 }, CRV = { E: 1.5, M: 3, H: 4 }, HILL = { L: 8, M: 18, H: 30 };
+const LEN = { S: 25, M: 50, L: 100 }, CRV = { E: 1.5, M: 3, H: 4 }, HILL = { L: 5, M: 10, H: 16 };
 function straight(n) { addRoad(n, n, n, 0, 0); }
 function curve(n, c, h) { addRoad(n, n, n, c, h || 0); }
 function hill(n, h) { addRoad(n, n, n, 0, h); }
@@ -214,7 +214,7 @@ function buildTrack() {
   segments = [];
   // net elevation returns to 0 so the road flows smoothly through the finish (no seam/cliff)
   straight(LEN.S); curve(LEN.M, CRV.M, HILL.M); hill(LEN.M, HILL.H); curve(LEN.M, -CRV.H, -HILL.M);
-  sCurves(); straight(LEN.M); hill(LEN.L, -48); straight(LEN.S);
+  sCurves(); straight(LEN.M); hill(LEN.L, -26); straight(LEN.S);
   // the road just keeps going — the finish is a painted line across it (2 segments wide)
   segments[2].finish = true; segments[3].finish = true;
   // line the road with scenery props (drawn as buildings/cacti/trees/palms per theme)
@@ -342,7 +342,8 @@ function render() {
     project(seg.p2, playerX * ROAD_W - x - dx, playerY + CAM_H, camZ);
     x += dx; dx += seg.curve; seg.clip = maxy;
     if (seg.p1.camera.z <= cameraDepth || seg.p2.screen.y >= seg.p1.screen.y || seg.p2.screen.y >= maxy) continue;
-    renderSegment(seg.p1.screen, seg.p2.screen, seg);
+    const fog = 1 / Math.pow(2.718, (n / DRAW) * (n / DRAW) * 4.5);   // far road fades into horizon haze
+    renderSegment(seg.p1.screen, seg.p2.screen, seg, fog);
     maxy = seg.p2.screen.y;
   }
 
@@ -445,7 +446,7 @@ function poly(x1, y1, x2, y2, x3, y3, x4, y4, color) {
   ctx.fillStyle = color; ctx.beginPath();
   ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4); ctx.closePath(); ctx.fill();
 }
-function renderSegment(p1, p2, seg) {
+function renderSegment(p1, p2, seg, fog) {
   const d = seg.dark;
   const road = theme.road[d], grass = theme.grass[d], rumble = theme.rumble[d];
   const r1 = p1.w / 5, r2 = p2.w / 5;     // rumble width
@@ -459,6 +460,13 @@ function renderSegment(p1, p2, seg) {
   poly(p1.x + p1.w + r1, yb, p1.x + p1.w, yb, p2.x + p2.w, p2.y, p2.x + p2.w + r2, p2.y, rumble);
   // road
   poly(p1.x - p1.w, yb, p1.x + p1.w, yb, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, road);
+  // distance haze: blend the far road into the horizon colour (hides the
+  // dip beyond crests / curves so it never looks like a see-through gap)
+  if (fog < 0.98) {
+    ctx.globalAlpha = 1 - fog; ctx.fillStyle = theme.sky[2];
+    ctx.fillRect(-90, p2.y, W + 180, yb - p2.y + 1);
+    ctx.globalAlpha = 1;
+  }
 
   // finish line: a checkered band painted across the (continuing) road
   if (seg.finish) {
