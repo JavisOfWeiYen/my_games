@@ -32,6 +32,11 @@
   #pad .gas { background: rgba(64,210,150,.32); border-color: rgba(64,210,150,.5); }
   #pad .brake { background: rgba(255,92,110,.32); border-color: rgba(255,92,110,.5); }
   #pad .hand { width: 60px; height: 60px; font-size: 12px; background: rgba(255,179,71,.30); border-color: rgba(255,179,71,.5); }
+  #pad .aux { left: 18px; bottom: 110px; flex-direction: column; gap: 10px; }
+  #pad .aux button { width: 62px; height: 44px; font-size: 12px; font-weight: 700; }
+  #pad .ers { background: rgba(90,224,255,.26); border-color: rgba(90,224,255,.55); }
+  #pad .drs { background: rgba(55,210,122,.24); border-color: rgba(55,210,122,.55); }
+  #pad .tyre { background: rgba(205,214,235,.16); }
 
   #overlay {
     position: absolute; inset: 0; z-index: 9; background: rgba(8,11,18,.86); backdrop-filter: blur(5px);
@@ -59,6 +64,11 @@
   </div>
 
   <div id="pad">
+    <div class="grp aux">
+      <button class="ers" id="bErs">ERS ⚡</button>
+      <button class="drs" id="bDrs">DRS</button>
+      <button class="tyre" id="bTyre">胎 TYRE</button>
+    </div>
     <div class="grp left">
       <button id="bLeft">◀</button>
       <button id="bRight">▶</button>
@@ -72,8 +82,8 @@
 
   <div id="overlay">
     <h1>Apex GP</h1>
-    <p>A top-down racing <b>simulator</b> — real grip, weight transfer and slides. Brake early, hit the apex, feed the throttle out of the corner. 真實操控的俯視賽車模擬：抓煞車點、切 Apex、出彎再補油。</p>
-    <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · R reset · P pause<br>📱 use the on-screen buttons</p>
+    <p>A first-person racing <b>simulator</b> — real grip, weight transfer and slides, with tyres that wear and heat up, ERS boost, DRS and a draining fuel load. Brake early, hit the apex, feed the throttle out of the corner. 第一人稱賽車模擬：真實抓地與配重，輪胎會磨耗升溫、ERS 加速、DRS、油量遞減。抓煞車點、切 Apex、出彎補油。</p>
+    <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · <b>Shift ERS</b> · <b>F DRS</b> · <b>T tyres 換胎</b> · R reset · P pause<br>📱 on-screen buttons (incl. ERS / DRS / 胎)</p>
     <button id="ovBtn">▶ Drive 開始</button>
   </div>
 </div>
@@ -102,15 +112,33 @@ const MAX_STEER = 0.52;                          // rad at low speed (more lock 
 const HALF_W = 9.5, KERB_W = 1.4;                // track half-width, kerb width (wider = more room for error)
 const G = 9.8;
 
+// ----- Phase 1 systems -----
+const FUEL_MASS = 110;                           // kg of fuel in a full tank, added to MASS (light car = faster)
+const COMPOUNDS = {                              // grip vs durability + ideal working temperature
+  soft:   { key: 'S', grip: 1.10, wear: 1.9, opt: 98, col: '#ff5a5f' },
+  medium: { key: 'M', grip: 1.00, wear: 1.0, opt: 88, col: '#ffd24a' },
+  hard:   { key: 'H', grip: 0.92, wear: 0.55, opt: 78, col: '#dfe6f2' },
+};
+const COMPOUND_ORDER = ['soft', 'medium', 'hard'];
+const ERS_BOOST = 4600;                          // extra drive force (N) while deploying
+const DRS_DRAG = 0.55;                           // drag multiplier when DRS is open (low-drag mode)
+
 // ===== 2. STATE =====
-const car = { x: 0, y: 0, a: 0, vx: 0, vy: 0, av: 0, steer: 0, throttle: 0, brake: 0, hand: 0 };
+const car = {
+  x: 0, y: 0, a: 0, vx: 0, vy: 0, av: 0, steer: 0, throttle: 0, brake: 0, hand: 0,
+  // Phase 1 systems
+  tyre: { compound: 'medium', wear: 0, temp: 80 },  // wear 0..1, temp °C
+  fuel: 1,                                          // 1 = full tank
+  ers: 0.7,                                         // 0..1 battery charge
+  ersOn: false, drs: 0,                             // live state for the HUD
+};
 let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
 let W = 0, H = 0, dpr = 1, zoom = 8.0, camX = 0, camY = 0, camA = 0, shake = 0;
 const marks = [];            // skid marks (world coords), capped
 const smoke = [];            // tyre-smoke particles, capped
-const input = { gas: 0, brake: 0, left: 0, right: 0, hand: 0 };
+const input = { gas: 0, brake: 0, left: 0, right: 0, hand: 0, boost: 0, drs: 0 };
 let grassPat = null, asphaltPat = null;
 best = +(localStorage.getItem('apexgp-best') || 0);
 
@@ -180,6 +208,8 @@ function resetCar() {
   const p = track.pts[0];
   car.x = p.x; car.y = p.y; car.a = Math.atan2(p.uy, p.ux);
   car.vx = car.vy = car.av = car.steer = 0;
+  car.tyre.wear = 0; car.tyre.temp = 80;        // fresh set of the current compound
+  car.fuel = 1; car.ers = 0.7; car.ersOn = false; car.drs = 0;
   nearIdx = 0; lastS = 0;
 }
 function step(dt) {
@@ -199,8 +229,17 @@ function step(dt) {
   if (surf.surf === 'grass') { gripMul = 0.5; resMul = 4.5; }   // slows you, but you can still drive back on
   else if (surf.surf === 'kerb') { gripMul = 0.85; resMul = 1.6; }
 
-  // downforce raises grip with speed
-  const grip = (MAX_GRIP + speed * speed * 0.00018) * gripMul;   // downforce raises grip with speed
+  // --- Phase 1: tyre grip, fuel mass, ERS deploy, DRS ---
+  const comp = COMPOUNDS[car.tyre.compound], tw = car.tyre;
+  const tempGrip = clamp(1 - ((tw.temp - comp.opt) / 60) ** 2, 0.55, 1);  // peak at optimal temp; cold/hot = less grip
+  const tyreGrip = comp.grip * tempGrip * (1 - tw.wear * 0.30);           // worn tyres lose up to 30% grip
+  const m = MASS + car.fuel * FUEL_MASS;                                  // heavier with fuel -> slower, more inertia
+  const boosting = !!input.boost && car.ers > 0 && car.throttle > 0;
+  const drsOpen = !!input.drs && car.brake === 0 && Math.abs(car.steer) < 0.08 && speed > 25;
+  car.ersOn = boosting; car.drs = drsOpen ? 1 : 0;
+
+  // downforce raises grip with speed; the tyres scale the whole grip budget
+  const grip = (MAX_GRIP + speed * speed * 0.00018) * gripMul * tyreGrip;
 
   // slip angles
   const eps = 2.0;
@@ -209,12 +248,13 @@ function step(dt) {
   const slipF = side + Math.atan2(car.av * A, Math.abs(vlong) + eps) - car.steer * Math.sign(vlong || 1);
   const slipR = side - rot;
 
-  const wF = MASS * G * (B / WHEELBASE), wR = MASS * G * (A / WHEELBASE);
+  const wF = m * G * (B / WHEELBASE), wR = m * G * (A / WHEELBASE);
   const sgn = Math.sign(vlong || 1);
-  const drive = car.throttle * ENGINE;                         // engine -> rear axle
+  const fuelOut = car.fuel <= 0;
+  const drive = (fuelOut ? 0 : car.throttle * ENGINE) + (boosting ? ERS_BOOST : 0);   // engine + ERS -> rear axle
   const brk = car.brake * BRAKE_F + (car.hand ? BRAKE_F * 0.9 : 0);
   // longitudinal weight transfer: accel -> rear, brake -> front
-  const dW = clamp(((drive - brk * sgn) / MASS) * 0.03, -0.35, 0.35);
+  const dW = clamp(((drive - brk * sgn) / m) * 0.03, -0.35, 0.35);
   const loadF = wF * (1 - dW), loadR = wR * (1 + dW);
 
   // lateral tyre force: Fy = Ca * slipAngle (Ca is negative, so the force OPPOSES
@@ -232,12 +272,13 @@ function step(dt) {
   if (car.hand) flatR *= 0.55;                                 // handbrake breaks the rear loose
 
   const ftr = longF + longR;
-  const fx = ftr - Math.sin(car.steer) * flatF - (RESIST * resMul) * vlong - DRAG * vlong * Math.abs(vlong);
+  const dragF = DRAG * (drsOpen ? DRS_DRAG : 1);               // DRS cuts forward drag -> higher top speed
+  const fx = ftr - Math.sin(car.steer) * flatF - (RESIST * resMul) * vlong - dragF * vlong * Math.abs(vlong);
   const fy = Math.cos(car.steer) * flatF + flatR - (RESIST * resMul) * vlat - DRAG * vlat * Math.abs(vlat);
   const torque = A * Math.cos(car.steer) * flatF - B * flatR;
 
   // integrate (car frame)
-  const ax = fx / MASS, ay = fy / MASS;
+  const ax = fx / m, ay = fy / m;
   vlong += ax * dt; vlat += ay * dt;
   car.av += (torque / INERTIA) * dt;
 
@@ -273,6 +314,23 @@ function step(dt) {
   const slipMag = Math.abs(slipF) + Math.abs(slipR);
   const sliding = (slipMag > 0.32 && speed > 8) || (car.hand && speed > 6) || (surf.surf === 'grass' && speed > 12);
   if (sliding) layMarks(speed);
+  const lockup = car.brake > 0.4 && speed > 14 && slipMag > 0.22;        // front-tyre lock-up under heavy braking
+  if (lockup) puffSmoke(A + 0.2, 2);                                      // emit ahead of the camera -> visible in cockpit
+
+  // --- Phase 1: tyre temp & wear, ERS charge, fuel burn (integrated at real-time rates) ---
+  if (speed > 1.5) {
+    const load = (Math.abs(flatF) + Math.abs(flatR)) / (m * G);          // ~lateral g through the tyres
+    const heat = 16 + load * 14 + slipMag * 90;                          // working temp from load, big spike when sliding
+    const cool = (tw.temp - 25) * (0.32 + speed * 0.006);                // air cooling, stronger at speed
+    tw.temp = clamp(tw.temp + (heat - cool) * dt, 25, 170);
+    tw.wear = Math.min(1, tw.wear + comp.wear * (0.003 + slipMag * 0.02) * dt);
+  } else {
+    tw.temp += (25 - tw.temp) * 0.05 * dt;                               // cool toward ambient when parked
+  }
+  if (boosting) car.ers = Math.max(0, car.ers - 0.17 * dt);              // ~6s of full deploy from a full battery
+  else if (car.brake > 0 && speed > 5) car.ers = Math.min(1, car.ers + 0.13 * dt);  // harvest under braking
+  else car.ers = Math.min(1, car.ers + 0.015 * dt);                     // slow trickle otherwise
+  if (!fuelOut) car.fuel = Math.max(0, car.fuel - (0.0010 + car.throttle * 0.0022) * dt);
 
   return { surf, speed, vlong, slipMag, sliding };
 }
@@ -288,6 +346,15 @@ function layMarks(speed) {
   if (smoke.length < 140 && Math.random() < 0.6) {
     const rx = car.x - cs * 1.6, ry = car.y - sn * 1.6;
     smoke.push({ x: rx, y: ry, life: 1, sz: 1.4 + Math.random() * 1.6, vx: (Math.random()-.5)*2, vy: (Math.random()-.5)*2 });
+  }
+}
+// puff of smoke at a forward offset from the car (used for visible front-tyre lock-ups)
+function puffSmoke(fwdOff, n) {
+  const cs = Math.cos(car.a), sn = Math.sin(car.a);
+  for (let i = 0; i < n && smoke.length < 170; i++) {
+    const side = (Math.random() - 0.5) * 2.6;
+    smoke.push({ x: car.x + cs * fwdOff - sn * side, y: car.y + sn * fwdOff + cs * side,
+      life: 1, sz: 1.3 + Math.random() * 1.8, vx: (Math.random()-.5)*3, vy: (Math.random()-.5)*3 });
   }
 }
 
@@ -496,11 +563,40 @@ function drawDash() {
   ctx.fillStyle = '#eef2fb'; ctx.font = '700 18px system-ui, sans-serif'; ctx.fillText(fmt(lapNow), x0 + pw * 0.82, baseY - 8);
   ctx.fillStyle = '#7f8ba6'; ctx.font = '600 9px system-ui, sans-serif'; ctx.fillText('本圈 LAP ' + lap, x0 + pw * 0.82, y0 + ph - 10);
 }
+// telemetry bars (top-left): ERS battery, fuel, tyre compound/wear/temp, DRS
+function drawTelemetry() {
+  const x = 14, w = 156; let y = 66;
+  const row = (label, frac, col, valTxt, glow) => {
+    ctx.textAlign = 'left'; ctx.fillStyle = '#9fb0cf'; ctx.font = '600 10px system-ui, sans-serif'; ctx.fillText(label, x, y - 2);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#7f8ba6'; ctx.fillText(valTxt, x + w, y - 2); ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(120,135,165,.22)'; rrectP(x, y, w, 7, 3); ctx.fill();
+    if (glow) { ctx.globalAlpha = 0.35; ctx.fillStyle = col; rrectP(x, y, w, 7, 3); ctx.fill(); ctx.globalAlpha = 1; }
+    ctx.fillStyle = col; rrectP(x, y, w * clamp(frac, 0, 1), 7, 3); ctx.fill();
+    y += 24;
+  };
+  row('ERS', car.ers, car.ersOn ? '#7af0ff' : '#3aa6d6', Math.round(car.ers * 100) + '%', car.ersOn);
+  row('FUEL 油', car.fuel, car.fuel < 0.12 ? '#ff5a5f' : '#9be88a', Math.round(car.fuel * 100) + '%', false);
+  // tyre: compound chip + remaining-life bar + temperature
+  const comp = COMPOUNDS[car.tyre.compound], tw = car.tyre;
+  ctx.textAlign = 'left'; ctx.fillStyle = '#9fb0cf'; ctx.font = '600 10px system-ui, sans-serif'; ctx.fillText('TYRE 胎', x, y - 2);
+  const dT = Math.abs(tw.temp - comp.opt), tcol = dT < 12 ? '#9be88a' : dT < 28 ? '#ffd24a' : '#ff5a5f';
+  ctx.textAlign = 'right'; ctx.fillStyle = tcol; ctx.fillText(Math.round(tw.temp) + '°C', x + w, y - 2); ctx.textAlign = 'left';
+  ctx.fillStyle = comp.col; ctx.beginPath(); ctx.arc(x + 7, y + 3, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = '#10131a'; ctx.font = '800 9px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(comp.key, x + 7, y + 6.5); ctx.textAlign = 'left';
+  const wx = x + 20, ww = w - 20, life = 1 - tw.wear, lcol = life > 0.5 ? '#9be88a' : life > 0.2 ? '#ffd24a' : '#ff5a5f';
+  ctx.fillStyle = 'rgba(120,135,165,.22)'; rrectP(wx, y, ww, 7, 3); ctx.fill();
+  ctx.fillStyle = lcol; rrectP(wx, y, ww * clamp(life, 0, 1), 7, 3); ctx.fill();
+  y += 22;
+  // DRS pill (green when open)
+  ctx.fillStyle = car.drs ? '#37d27a' : 'rgba(120,135,165,.18)'; rrectP(x, y, 46, 15, 4); ctx.fill();
+  ctx.fillStyle = car.drs ? '#06210f' : '#8595b2'; ctx.font = '800 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('DRS', x + 23, y + 11); ctx.textAlign = 'left';
+}
 function drawHud() {
   // top-left: lap count + best lap (the live lap time lives on the dash)
   ctx.textAlign = 'left';
   ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + lap, 16, 28);
   ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 48);
+  drawTelemetry();
   drawDash();
   drawMinimap();
 }
@@ -601,10 +697,16 @@ $('#ovBtn').addEventListener('click', () => { if (paused) togglePause(); else st
 $('#bReset').addEventListener('click', resetToStart);
 $('#bPause').addEventListener('click', togglePause);
 
-const keymap = { ArrowUp:'gas', w:'gas', W:'gas', ArrowDown:'brake', s:'brake', S:'brake', ArrowLeft:'left', a:'left', A:'left', ArrowRight:'right', d:'right', D:'right', ' ':'hand' };
+function cycleTyre() {
+  const i = COMPOUND_ORDER.indexOf(car.tyre.compound);
+  car.tyre.compound = COMPOUND_ORDER[(i + 1) % COMPOUND_ORDER.length];
+  car.tyre.wear = 0; car.tyre.temp = 80;        // bolt on a fresh set
+}
+const keymap = { ArrowUp:'gas', w:'gas', W:'gas', ArrowDown:'brake', s:'brake', S:'brake', ArrowLeft:'left', a:'left', A:'left', ArrowRight:'right', d:'right', D:'right', ' ':'hand', Shift:'boost', f:'drs', F:'drs' };
 addEventListener('keydown', e => {
   if (e.key === 'p' || e.key === 'P') { togglePause(); e.preventDefault(); return; }
   if (e.key === 'r' || e.key === 'R') { resetToStart(); e.preventDefault(); return; }
+  if (e.key === 't' || e.key === 'T') { cycleTyre(); e.preventDefault(); return; }
   if (e.key === 'Enter' && !started) { startGame(); return; }
   const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
 });
@@ -616,6 +718,8 @@ function hold(sel, key) {
   el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off);
 }
 hold('#bGas', 'gas'); hold('#bBrake', 'brake'); hold('#bLeft', 'left'); hold('#bRight', 'right'); hold('#bHand', 'hand');
+hold('#bErs', 'boost'); hold('#bDrs', 'drs');
+$('#bTyre').addEventListener('click', cycleTyre);
 
 // ===== start =====
 buildTrack(); resetCar(); camYaw = car.a; resize(); requestAnimationFrame(loop);

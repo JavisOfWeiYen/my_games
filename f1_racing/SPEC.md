@@ -72,8 +72,8 @@ actually build. 規則真實、品牌虛構。
 - Touch: on-screen steer + pedals + boost (carefully laid out, not cramped).
 
 ## 10. Phases 開發階段
-- **Phase 0** — car + physics + one circuit + follow camera + polished art + HUD basics. (playable hotlap that *feels* real and *looks* clean)
-- **Phase 1** — tyres (wear/temp) + ERS + DRS + fuel + tyre smoke/skid FX.
+- ✅ **Phase 0** — car + physics + one circuit + **first-person cockpit** camera + polished art + HUD. (playable hotlap that *feels* real and *looks* clean) — **done**
+- ✅ **Phase 1** — 3 tyre compounds (wear/temp) + ERS + DRS + fuel + tyre-smoke FX, all on the cockpit dashboard. — **done**
 - **Phase 2** — AI opponents + qualifying + race + pit stops + timing/positions.
 - **Phase 3+** — more tracks, weather, simple career/championship.
 

@@ -49,6 +49,7 @@ No install needed — they run right in your browser (computer, tablet, or phone
 - 🧠 **Real driving physics 真實操控物理** — tyre slip angles, front/rear weight transfer and a grip limit, so the car understeers, slides and can be caught 輪胎滑移角、前後配重轉移與抓地極限,會推頭、會滑、抓得回來
 - 🪟 **First-person cockpit 第一人稱座艙** — eye-level view down the track with a steering wheel that turns as you steer 駕駛視線看出去,方向盤跟著你轉
 - 📊 **Cockpit dashboard 座艙儀表板** — an RPM tach with shift/redline, big gear + speed, live lap time and throttle/brake bars 轉速表(含換檔紅線)、大檔位+時速、本圈計時與油門/煞車條
+- ⚙️ **Car systems 車輛系統** — 3 tyre compounds that wear and heat up (grip vs durability), ERS battery you harvest under braking and deploy for a boost, DRS low-drag mode on the straights, and a fuel load that lightens the car over a stint — all on the telemetry 三種輪胎配方(會磨耗升溫,抓地↔耐久)、ERS 電池(煞車回充、放電加速)、直線 DRS 低阻力、油量隨里程變輕,全在儀表上
 - 🛣️ **Hand-built circuit 手工賽道** — a closed track with fast and slow corners, kerbs, grass runoff and a start/finish line 含快彎慢彎、紅白路肩、草地緩衝與起跑/終點線的封閉賽道
 - ⏱️ **Lap timing 單圈計時** — live lap time and a saved best lap 即時單圈時間與最佳圈紀錄
 - 🔊 **Engine sound 引擎聲** — revs that rise and fall with speed and gear 隨速度與檔位起伏的引擎聲

@@ -21,6 +21,9 @@ https://javisofweiyen.github.io/my_games/f1_racing/
 | Brake 煞車 | `S` / `↓` | ▼ |
 | Steer 轉向 | `A` `D` / `←` `→` | ◀ ▶ |
 | Handbrake 手煞 | `Space` | 手煞 |
+| ERS boost 能量加速 | `Shift` | ERS ⚡ |
+| DRS (low drag) 低阻力 | `F` | DRS |
+| Change tyres 換胎 | `T` | 胎 TYRE |
 | Reset 回起點 | `R` | Reset |
 | Pause 暫停 | `P` | Pause |
 
@@ -32,6 +35,10 @@ https://javisofweiyen.github.io/my_games/f1_racing/
   切 **Apex**(貼著內側路肩),出彎再慢慢補油。
 - Run onto the grass and you'll slow right down — steer back onto the asphalt to recover.
   跑到草地上會大減速 — 把車轉回柏油路面就能恢復。
+- **Soft tyres** grip best but wear and overheat fastest; **hard** last longest. Sliding
+  cooks and wears them — watch the TYRE bar. 軟胎抓地最好但磨耗/過熱最快,硬胎最耐;猛滑會把胎搞爛,注意 TYRE 條。
+- Save **ERS** for corner exits and the straight, harvest it back under braking; pop **DRS**
+  on the straights for more top speed. ERS 留到出彎和直線放、煞車回充;直線開 DRS 拉極速。
 
 ## 🛠️ How It's Made 怎麼做的
 
