@@ -450,12 +450,15 @@ function renderSegment(p1, p2, seg) {
   const road = theme.road[d], grass = theme.grass[d], rumble = theme.rumble[d];
   const r1 = p1.w / 5, r2 = p2.w / 5;     // rumble width
   const e1 = p1.w / 22, e2 = p2.w / 22;   // edge line width
-  ctx.fillStyle = grass; ctx.fillRect(-90, p2.y, W + 180, p1.y - p2.y);
+  // bleed the near (bottom) edge 1px down so neighbouring segments overlap
+  // and never leave a 1px seam/crack between road polygons on slopes
+  const yb = p1.y + 1;
+  ctx.fillStyle = grass; ctx.fillRect(-90, p2.y, W + 180, yb - p2.y + 1);
   // rumble strips
-  poly(p1.x - p1.w - r1, p1.y, p1.x - p1.w, p1.y, p2.x - p2.w, p2.y, p2.x - p2.w - r2, p2.y, rumble);
-  poly(p1.x + p1.w + r1, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x + p2.w + r2, p2.y, rumble);
+  poly(p1.x - p1.w - r1, yb, p1.x - p1.w, yb, p2.x - p2.w, p2.y, p2.x - p2.w - r2, p2.y, rumble);
+  poly(p1.x + p1.w + r1, yb, p1.x + p1.w, yb, p2.x + p2.w, p2.y, p2.x + p2.w + r2, p2.y, rumble);
   // road
-  poly(p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, road);
+  poly(p1.x - p1.w, yb, p1.x + p1.w, yb, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, road);
 
   // finish line: a checkered band painted across the (continuing) road
   if (seg.finish) {
@@ -464,19 +467,19 @@ function renderSegment(p1, p2, seg) {
       const ta = i / cols, tb = (i + 1) / cols;
       const x1a = p1.x - p1.w + 2 * p1.w * ta, x1b = p1.x - p1.w + 2 * p1.w * tb;
       const x2a = p2.x - p2.w + 2 * p2.w * ta, x2b = p2.x - p2.w + 2 * p2.w * tb;
-      poly(x1a, p1.y, x1b, p1.y, x2b, p2.y, x2a, p2.y, (i + seg.index) % 2 ? '#10121a' : '#eef2fb');
+      poly(x1a, yb, x1b, yb, x2b, p2.y, x2a, p2.y, (i + seg.index) % 2 ? '#10121a' : '#eef2fb');
     }
     return;
   }
   // solid edge lines just inside the road
-  poly(p1.x - p1.w + e1 * 2, p1.y, p1.x - p1.w + e1 * 3, p1.y, p2.x - p2.w + e2 * 3, p2.y, p2.x - p2.w + e2 * 2, p2.y, theme.edge);
-  poly(p1.x + p1.w - e1 * 3, p1.y, p1.x + p1.w - e1 * 2, p1.y, p2.x + p2.w - e2 * 2, p2.y, p2.x + p2.w - e2 * 3, p2.y, theme.edge);
+  poly(p1.x - p1.w + e1 * 2, yb, p1.x - p1.w + e1 * 3, yb, p2.x - p2.w + e2 * 3, p2.y, p2.x - p2.w + e2 * 2, p2.y, theme.edge);
+  poly(p1.x + p1.w - e1 * 3, yb, p1.x + p1.w - e1 * 2, yb, p2.x + p2.w - e2 * 2, p2.y, p2.x + p2.w - e2 * 3, p2.y, theme.edge);
   // dashed lane separators (only on light segments -> stripes)
   if (!d && theme.lane) {
     const lw1 = p1.w / 30, lw2 = p2.w / 30;
     for (let i = 1; i < LANES; i++) {
       const lx1 = p1.x - p1.w + (2 * p1.w / LANES) * i, lx2 = p2.x - p2.w + (2 * p2.w / LANES) * i;
-      poly(lx1 - lw1, p1.y, lx1 + lw1, p1.y, lx2 + lw2, p2.y, lx2 - lw2, p2.y, theme.lane);
+      poly(lx1 - lw1, yb, lx1 + lw1, yb, lx2 + lw2, p2.y, lx2 - lw2, p2.y, theme.lane);
     }
   }
 }
@@ -757,34 +760,53 @@ function drawInfo() {
 }
 
 // ----- audio: engine hum + tyre screech (continuous) and one-shot sfx -----
-let actx, master, engOsc, engOsc2, engGain, scrGain, audioReady = false, lastCrash = 0;
+let actx, master, engOsc, engOsc2, engGain, engLfo, engLfoGain, noiseFilter, noiseGain, scrGain, audioReady = false, lastCrash = 0;
 function initAudio() {
   if (actx) { actx.resume(); return; }
   try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
   master = actx.createGain(); master.gain.value = 0.5; master.connect(actx.destination);
-  const ef = actx.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 950;
+
+  // engine: a harmonic-rich tone + a sub-octave, chopped by a firing-rate LFO,
+  // with a low fundamental so it rumbles like a real motor rather than a buzzer.
+  const real = new Float32Array([0, 1, 0.5, 0.34, 0.45, 0.28, 0.22, 0.16, 0.12]);
+  const wave = actx.createPeriodicWave(real, new Float32Array(real.length));
+  const ef = actx.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 1500;
   engGain = actx.createGain(); engGain.gain.value = 0;
-  engOsc = actx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 60;
-  engOsc2 = actx.createOscillator(); engOsc2.type = 'square'; engOsc2.frequency.value = 90;
-  const e2 = actx.createGain(); e2.gain.value = 0.35;
-  engOsc.connect(ef); engOsc2.connect(e2); e2.connect(ef); ef.connect(engGain); engGain.connect(master);
-  engOsc.start(); engOsc2.start();
-  const buf = actx.createBuffer(1, (actx.sampleRate * 0.5) | 0, actx.sampleRate);
-  const dch = buf.getChannelData(0); for (let i = 0; i < dch.length; i++) dch[i] = Math.random() * 2 - 1;
-  const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+  engOsc = actx.createOscillator(); engOsc.setPeriodicWave(wave); engOsc.frequency.value = 50;
+  engOsc2 = actx.createOscillator(); engOsc2.type = 'sine'; engOsc2.frequency.value = 25;
+  const sub = actx.createGain(); sub.gain.value = 0.55;
+  engOsc.connect(ef); engOsc2.connect(sub); sub.connect(ef); ef.connect(engGain); engGain.connect(master);
+  engLfo = actx.createOscillator(); engLfo.type = 'sawtooth'; engLfo.frequency.value = 20;
+  engLfoGain = actx.createGain(); engLfoGain.gain.value = 0;
+  engLfo.connect(engLfoGain); engLfoGain.connect(engGain.gain);   // amplitude "putter"
+  engOsc.start(); engOsc2.start(); engLfo.start();
+
+  // one white-noise buffer shared by the intake hiss and the tyre screech
+  const nb = actx.createBuffer(1, (actx.sampleRate * 0.6) | 0, actx.sampleRate);
+  const nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const nsrc = actx.createBufferSource(); nsrc.buffer = nb; nsrc.loop = true;
+  noiseFilter = actx.createBiquadFilter(); noiseFilter.type = 'lowpass'; noiseFilter.frequency.value = 600;
+  noiseGain = actx.createGain(); noiseGain.gain.value = 0;
+  nsrc.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(master); nsrc.start();
+  const ssrc = actx.createBufferSource(); ssrc.buffer = nb; ssrc.loop = true;
   const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2300; bp.Q.value = 0.8;
   scrGain = actx.createGain(); scrGain.gain.value = 0;
-  src.connect(bp); bp.connect(scrGain); scrGain.connect(master); src.start();
+  ssrc.connect(bp); bp.connect(scrGain); scrGain.connect(master); ssrc.start();
   audioReady = true;
 }
 function updateAudio() {
   if (!audioReady) return;
   const live = running && !paused, spd = speed / MAXSPEED, now = actx.currentTime;
-  const gear = Math.floor(spd * 6), rpmFrac = speed < 1 ? 0.05 : ((spd * 6) % 1);
-  const f = 55 + gear * 7 + rpmFrac * 120;
-  engOsc.frequency.setTargetAtTime(f, now, 0.04);
-  engOsc2.frequency.setTargetAtTime(f * 1.5, now, 0.04);
-  engGain.gain.setTargetAtTime(live ? 0.05 + spd * 0.10 : 0, now, 0.06);
+  const gear = Math.floor(spd * 6), rpmFrac = speed < 1 ? 0.06 : ((spd * 6) % 1);
+  const f = 42 + gear * 5 + rpmFrac * 150;                 // fundamental climbs within each gear
+  engOsc.frequency.setTargetAtTime(f, now, 0.05);
+  engOsc2.frequency.setTargetAtTime(f * 0.5, now, 0.05);
+  engLfo.frequency.setTargetAtTime(Math.max(8, f * 0.5), now, 0.05);  // cylinder firing rate
+  const vol = live ? 0.07 + spd * 0.10 : 0;
+  engGain.gain.setTargetAtTime(vol, now, 0.07);
+  engLfoGain.gain.setTargetAtTime(live ? vol * 0.55 : 0, now, 0.07);
+  noiseFilter.frequency.setTargetAtTime(380 + spd * 1700, now, 0.06);
+  noiseGain.gain.setTargetAtTime(live ? 0.015 + spd * 0.05 : 0, now, 0.07);
   const scr = (live && driftAmt > 0.35 && spd > 0.3) ? Math.min(0.18, (driftAmt - 0.35) * 0.5 * spd) : 0;
   scrGain.gain.setTargetAtTime(scr, now, 0.05);
 }
