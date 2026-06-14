@@ -12,6 +12,7 @@ No install needed — they run right in your browser (computer, tablet, or phone
 | ✨ **Dress-Up Studio 換裝小遊戲** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/dress-up-studio/) | Dress up your doll! Hair, hats, clothes, skirts, shoes, accessories — every piece in any color. Featuring an Ice Queen ❄️ outfit. 幫娃娃換裝:髮型、帽子、衣服、裙子、鞋子、配件通通可以換,還有冰雪女王造型! |
 | 🧱 **Block Drop 方塊掉掉樂** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/tetris/) | A cute Tetris! Stack the falling blocks and clear full rows. Keyboard or touch/swipe controls, next + hold pieces, levels, and a saved high score. 可愛版俄羅斯方塊:堆方塊、消滿行,支援鍵盤與手機滑動,有預告/暫存方塊、等級與最高分紀錄! |
 | 🏎️ **City Racer 城市賽車** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/city-racer/) | A cockpit-view pseudo-3D racer — speed + rev gauges, steering wheel, engine sound and corner drifting. Beat the clock each level to advance, through changing scenes (night city, day, desert, grassland, seaside). Keyboard or touch. 車內視角賽車:時速/轉速錶、方向盤、引擎聲與過彎甩尾,限時闖關,場景隨關卡變換(夜城、白天、沙漠、草原、海邊),支援鍵盤與觸控! |
+| 🏁 **Apex GP 賽車模擬** | [▶️ Play 開始玩](https://javisofweiyen.github.io/my_games/f1_racing/) | A first-person racing **simulator** — real tyre grip, slip angles, weight transfer and catchable slides, on a hand-built circuit. First-person cockpit view with a steering wheel that turns as you do. Keyboard or touch. 第一人稱賽車**模擬**:真實輪胎抓地、滑移角、配重轉移與可控甩尾,手工設計賽道。第一人稱座艙視角,方向盤跟著你轉,支援鍵盤與觸控! |
 
 ![Dress-Up Studio screenshot](dress-up-studio/screenshot.png)
 
@@ -42,6 +43,15 @@ No install needed — they run right in your browser (computer, tablet, or phone
 - 🏞️ **Changing scenes 場景變換** — night city, daytime, desert, grassland and seaside cycle as you level up 霓虹夜城、白天、沙漠、草原、海邊隨關卡輪替
 - 🔊 **Sound & drift 音效與甩尾** — engine note, tyre screech and a view that leans into the corners 引擎聲、甩尾摩擦聲,畫面隨過彎傾斜
 - ⌨️📱 **Keyboard & touch 鍵盤與觸控** — arrows/WASD or on-screen buttons 方向鍵/WASD 或螢幕按鈕
+
+## 🏁 Apex GP Highlights 遊戲特色
+
+- 🧠 **Real driving physics 真實操控物理** — tyre slip angles, front/rear weight transfer and a grip limit, so the car understeers, slides and can be caught 輪胎滑移角、前後配重轉移與抓地極限,會推頭、會滑、抓得回來
+- 🪟 **First-person cockpit 第一人稱座艙** — eye-level view down the track with a steering wheel that turns as you steer 駕駛視線看出去,方向盤跟著你轉
+- 🛣️ **Hand-built circuit 手工賽道** — a closed track with fast and slow corners, kerbs, grass runoff and a start/finish line 含快彎慢彎、紅白路肩、草地緩衝與起跑/終點線的封閉賽道
+- ⏱️ **Lap timing 單圈計時** — live lap time and a saved best lap 即時單圈時間與最佳圈紀錄
+- 🔊 **Engine sound 引擎聲** — revs that rise and fall with speed and gear 隨速度與檔位起伏的引擎聲
+- ⌨️📱 **Keyboard & touch 鍵盤與觸控** — W/↑ throttle, S/↓ brake, A/D steer, Space handbrake, or on-screen buttons W/↑ 油門、S/↓ 煞車、A/D 轉向、空白鍵手煞,或螢幕按鈕
 
 ## 🚀 Run Locally 在自己電腦上玩
 
