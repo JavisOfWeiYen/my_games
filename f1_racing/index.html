@@ -450,19 +450,58 @@ function vignette() {
 
 // ===== 8. HUD =====
 function fmt(ms) { if (!ms) return '--:--.--'; const t = ms/1000; const m = Math.floor(t/60); return m + ':' + (t%60).toFixed(2).padStart(5,'0'); }
-function drawHud() {
-  const speed = Math.hypot(car.vx, car.vy), kmh = Math.round(speed * 3.6);
-  const gear = speed < 1 ? 'N' : Math.min(8, 1 + Math.floor(speed / 12));
-  // speed (bottom centre)
+// engine state shared by the dash, the wheel and the audio
+function revInfo() {
+  const speed = Math.hypot(car.vx, car.vy);
+  const gear = speed < 1 ? 0 : Math.min(8, 1 + Math.floor(speed / 12));
+  let rpm;
+  if (gear === 0) rpm = car.throttle ? 0.30 : 0.10;            // idle / blip in neutral
+  else rpm = Math.min(1, 0.14 + ((speed - (gear - 1) * 12) / 12) * 0.88);
+  return { speed, kmh: Math.round(speed * 3.6), gear, rpm };
+}
+// cockpit instrument binnacle, centred just above the steering wheel
+function drawDash() {
+  const { kmh, gear, rpm } = revInfo();
+  let pw = Math.min(380, W * 0.64), cxp = W / 2; const ph = 90;
+  const hi = W - 250;                       // right edge of the free zone (clear of the touch buttons)
+  if (cxp + pw / 2 > hi) { pw = Math.max(190, Math.min(pw, hi - 175 - 8)); cxp = (175 + hi) / 2; }  // narrow + recentre on small screens
+  const x0 = cxp - pw / 2, y0 = H - ph - 6;
+  ctx.fillStyle = 'rgba(9,12,19,.85)'; rrectP(x0, y0, pw, ph, 16); ctx.fill();
+  ctx.strokeStyle = 'rgba(140,160,200,.12)'; ctx.lineWidth = 1.5; rrectP(x0 + 0.8, y0 + 0.8, pw - 1.6, ph - 1.6, 15); ctx.stroke();
+  // RPM tach — segmented bar, green -> amber -> red, flashing past the redline
+  const seg = 26, bx = x0 + 28, bw = pw - 56, by = y0 + 13, bh = 11, cw = bw / seg;
+  const flash = rpm > 0.93 && Math.floor(perf / 70) % 2 === 0;
+  for (let i = 0; i < seg; i++) {
+    const f = i / (seg - 1), on = rpm >= f - 1e-9;
+    let col = f < 0.55 ? '#37d27a' : f < 0.82 ? '#ffd24a' : '#ff4d4d';
+    if (flash) col = '#ff5a5f';
+    ctx.fillStyle = (on || flash) ? col : 'rgba(150,165,195,.14)';
+    ctx.fillRect(bx + cw * i, by, cw - 2, bh);
+  }
+  ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(159,176,207,.6)'; ctx.font = '600 9px system-ui, sans-serif';
+  ctx.fillText('RPM', x0 + 14, by + 10);
+  // throttle / brake vertical bars flanking the cluster
+  const barH = ph - 40, byb = y0 + ph - 12;
+  ctx.fillStyle = 'rgba(150,165,195,.12)'; ctx.fillRect(x0 + 14, byb - barH, 4, barH); ctx.fillRect(x0 + pw - 18, byb - barH, 4, barH);
+  ctx.fillStyle = '#37d27a'; const th = barH * clamp(car.throttle, 0, 1); ctx.fillRect(x0 + 14, byb - th, 4, th);
+  ctx.fillStyle = '#ff5a5f'; const bh2 = barH * clamp(car.brake, 0, 1); ctx.fillRect(x0 + pw - 18, byb - bh2, 4, bh2);
+  // gear (left) · speed (centre) · live lap time (right)
+  const baseY = y0 + 58;
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#eef2fb'; ctx.font = '800 54px system-ui, sans-serif'; ctx.fillText(kmh, W/2, H - 38);
-  ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillText('KM/H', W/2, H - 20);
-  // lap / best / gear (top-left telemetry)
+  ctx.fillStyle = rpm > 0.93 ? '#ff5a5f' : '#46e0a0'; ctx.font = '800 38px system-ui, sans-serif';
+  ctx.fillText(gear === 0 ? 'N' : gear, x0 + pw * 0.18, baseY);
+  ctx.fillStyle = '#7f8ba6'; ctx.font = '600 9px system-ui, sans-serif'; ctx.fillText('GEAR 檔', x0 + pw * 0.18, y0 + ph - 10);
+  ctx.fillStyle = '#eef2fb'; ctx.font = '800 44px system-ui, sans-serif'; ctx.fillText(kmh, cxp, baseY + 3);
+  ctx.fillStyle = '#7f8ba6'; ctx.font = '600 10px system-ui, sans-serif'; ctx.fillText('KM/H', cxp, y0 + ph - 10);
+  ctx.fillStyle = '#eef2fb'; ctx.font = '700 18px system-ui, sans-serif'; ctx.fillText(fmt(lapNow), x0 + pw * 0.82, baseY - 8);
+  ctx.fillStyle = '#7f8ba6'; ctx.font = '600 9px system-ui, sans-serif'; ctx.fillText('本圈 LAP ' + lap, x0 + pw * 0.82, y0 + ph - 10);
+}
+function drawHud() {
+  // top-left: lap count + best lap (the live lap time lives on the dash)
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + lap, 16, 30);
-  ctx.fillStyle = '#eef2fb'; ctx.font = '800 26px system-ui, sans-serif'; ctx.fillText(fmt(lapNow), 16, 58);
-  ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 78);
-  ctx.fillStyle = '#46e0a0'; ctx.font = '700 18px system-ui, sans-serif'; ctx.fillText('GEAR ' + gear, 16, 104);
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + lap, 16, 28);
+  ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 48);
+  drawDash();
   drawMinimap();
 }
 function drawMinimap() {
@@ -500,9 +539,11 @@ function initAudio() {
 function updateAudio() {
   if (!audioReady) return;
   const live = running && !paused, now = actx.currentTime;
-  const speed = Math.hypot(car.vx, car.vy), spd = Math.min(1, speed / 92);
-  const gear = Math.floor(spd * 8), rpmFrac = (spd * 8) % 1;
-  const fr = 46 + gear * 5 + rpmFrac * 150 + car.throttle * 20;
+  // drive the engine note from the same gear/rpm the tach shows, so the pitch
+  // climbs through a gear and drops on the up-shift (matching the dashboard)
+  const { gear, rpm, speed } = revInfo();
+  const spd = Math.min(1, speed / 92);
+  const fr = 52 + gear * 6 + rpm * 150 + car.throttle * 15;
   eOsc.frequency.setTargetAtTime(fr, now, 0.05);
   eOsc2.frequency.setTargetAtTime(fr * 0.5, now, 0.05);
   eLfo.frequency.setTargetAtTime(Math.max(8, fr * 0.5), now, 0.05);
