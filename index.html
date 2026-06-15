@@ -112,15 +112,25 @@ const GAMES = [
     title: '🏁 Apex GP 賽車模擬',
     desc: 'A first-person racing simulator — real grip, weight transfer and catchable slides, with a cockpit steering wheel on a hand-built circuit. 第一人稱賽車模擬：真實抓地與配重、可控甩尾，座艙方向盤、手工設計賽道！',
   },
+  // Not a game — an explainer page. Uses the optional href/img/cta fields below.
+  {
+    folder: 'f1_racing',
+    href: 'f1_racing/the-science.html',
+    img: 'f1_racing/the-science.png',
+    title: '📖 賽車的科學 The Science',
+    desc: 'The physics behind Apex GP — F=ma, the friction circle, downforce, tyre temperature — plus cornering technique, in plain words a 15-year-old can follow. 用國中生也懂的白話，講解賽車背後的物理與過彎技巧。',
+    cta: '📖 閱讀 Read',
+  },
 ];
 
+// folder/index.html + folder/screenshot.png are the defaults; href/img/cta override them.
 document.getElementById('games').innerHTML = GAMES.map(g => `
-  <a class="game" href="${g.folder}/index.html">
-    <img class="shot" src="${g.folder}/screenshot.png" alt="${g.title}" loading="lazy">
+  <a class="game" href="${g.href || g.folder + '/index.html'}">
+    <img class="shot" src="${g.img || g.folder + '/screenshot.png'}" alt="${g.title}" loading="lazy">
     <div class="body">
       <h2>${g.title}</h2>
       <p class="desc">${g.desc}</p>
-      <span class="play">▶ Play 開始玩</span>
+      <span class="play">${g.cta || '▶ Play 開始玩'}</span>
     </div>
   </a>
 `).join('');
