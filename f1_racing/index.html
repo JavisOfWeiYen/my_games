@@ -145,16 +145,25 @@ function makeCar(opts = {}) {
     nearIdx: 0,                                        // this car's cached nearest-centreline index
     lap: 1, lastS: 0, s: 0,                            // race progress, per car (for lap count + standings)
     ai: !!opts.ai, name: opts.name || 'You', col: opts.col || '#ffd24a',
+    // livery for the first-person car sprite: { base bodywork, accent stripe/details, wing }
+    livery: opts.livery || { base: opts.col || '#ffd24a', accent: '#15171c', wing: opts.col || '#ffd24a' },
     // AI driving style: gCorner = how near the grip limit it takes corners; brakeDiv = how late it brakes
     // (bigger = later); look = steering lookahead factor; commit = throttle confidence near the corner speed.
     skill: opts.skill || { gCorner: 3.6, brakeDiv: 19, look: 0.45, commit: 1.0 },
   };
 }
 const car = makeCar({ name: 'You', col: '#ffd24a' });   // the player (referenced by render/HUD/audio/camera)
+// Rivals styled after real 2026 F1 teams (colours/liveries per their 2026 cars; see research spec).
 const aiCars = [
-  makeCar({ ai: true, name: 'RIVAL 1', col: '#5db8ff', skill: { gCorner: 4.15, brakeDiv: 24, look: 0.42, commit: 1.08 } }), // ace: fast, late braker
-  makeCar({ ai: true, name: 'RIVAL 2', col: '#ff6b9d', skill: { gCorner: 3.70, brakeDiv: 20, look: 0.46, commit: 1.00 } }), // midfield
-  makeCar({ ai: true, name: 'RIVAL 3', col: '#c39bff', skill: { gCorner: 3.40, brakeDiv: 17, look: 0.50, commit: 0.95 } }), // steady, cautious
+  makeCar({ ai: true, name: 'McLaren', col: '#ff7a00',                 // papaya, deep orange -> anthracite, teal hint
+    livery: { base: '#ff7a00', accent: '#16181d', wing: '#ff7a00', hint: '#13b6a6' },
+    skill: { gCorner: 4.15, brakeDiv: 24, look: 0.42, commit: 1.08 } }),  // reigning-champ pace -> the ace
+  makeCar({ ai: true, name: 'Ferrari', col: '#d40000',                 // rosso corsa red + white (312T tribute)
+    livery: { base: '#d40000', accent: '#f2f2f2', wing: '#d40000', hint: '#f2f2f2' },
+    skill: { gCorner: 3.70, brakeDiv: 20, look: 0.46, commit: 1.00 } }),  // midfield
+  makeCar({ ai: true, name: 'Mercedes', col: '#cfd6df',                // silver with black rear
+    livery: { base: '#cfd6df', accent: '#15171c', wing: '#15171c', hint: '#00d2be' },
+    skill: { gCorner: 3.40, brakeDiv: 17, look: 0.50, commit: 0.95 } }),  // steady
 ];
 const allCars = [car, ...aiCars];
 let track = null;
@@ -578,26 +587,42 @@ function drawCars() {
   list.sort((a, b) => b.p.fwd - a.p.fwd);
   for (const { c, p } of list) drawCarSprite(c, p);
 }
+// rear-3/4 view of an open-wheeler: fat rear tyres, tapered engine cover, central fin and a wide
+// rear wing with endplates, painted in the car's livery so each rival reads as its real-life team.
 function drawCarSprite(c, p) {
-  const sc = p.sc, w = 1.95 * sc, h = 1.15 * sc, cx = p.x, gy = p.y;     // ~2m wide, ~1.15m tall at this distance
-  if (cx < -w || cx > W + w || w < 1.2) return;                          // off-screen / too tiny to bother
-  const topY = gy - h, rb = Math.min(5, w * 0.13);
+  const sc = p.sc, w = 2.05 * sc, h = 1.32 * sc, cx = p.x, gy = p.y;
+  if (cx < -w || cx > W + w || w < 1.4) return;                          // off-screen / too tiny to detail
+  const L = c.livery, topY = gy - h, half = w * 0.5;
   // ground shadow
-  ctx.fillStyle = 'rgba(0,0,0,.30)'; ctx.beginPath(); ctx.ellipse(cx, gy, w * 0.62, h * 0.26, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(cx, gy, w * 0.58, h * 0.15, 0, 0, 7); ctx.fill();
   // rear tyres
-  const tw = w * 0.27, tht = h * 0.5;
-  ctx.fillStyle = '#15171c';
-  rrectP(cx - w * 0.5, gy - tht, tw, tht, Math.min(3, tw * 0.4)); ctx.fill();
-  rrectP(cx + w * 0.5 - tw, gy - tht, tw, tht, Math.min(3, tw * 0.4)); ctx.fill();
-  // body
-  ctx.fillStyle = c.col;
-  rrectP(cx - w * 0.43, topY + h * 0.2, w * 0.86, h * 0.66, rb); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = Math.max(1, sc * 0.05); ctx.stroke();
-  // cockpit slot
-  ctx.fillStyle = 'rgba(8,12,20,.62)'; rrectP(cx - w * 0.15, topY + h * 0.26, w * 0.3, h * 0.34, Math.min(3, w * 0.05)); ctx.fill();
-  // rear wing
-  ctx.fillStyle = c.col; rrectP(cx - w * 0.5, topY, w, h * 0.15, 1); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(cx - w * 0.5, topY + h * 0.15, w, Math.max(1, h * 0.05));
+  const tyW = w * 0.27, tyH = h * 0.46;
+  ctx.fillStyle = '#0e1014';
+  rrectP(cx - half, gy - tyH, tyW, tyH, Math.min(4, tyW * 0.4)); ctx.fill();
+  rrectP(cx + half - tyW, gy - tyH, tyW, tyH, Math.min(4, tyW * 0.4)); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fillRect(cx - half + tyW * 0.2, gy - tyH * 0.8, tyW * 0.6, Math.max(1, h * 0.03));
+  ctx.fillRect(cx + half - tyW * 0.8, gy - tyH * 0.8, tyW * 0.6, Math.max(1, h * 0.03));
+  // diffuser / floor across the centre bottom
+  ctx.fillStyle = '#15181e'; rrectP(cx - w * 0.3, gy - h * 0.16, w * 0.6, h * 0.16, 2); ctx.fill();
+  // engine cover (tapered trapezoid) in base colour
+  ctx.fillStyle = L.base;
+  ctx.beginPath();
+  ctx.moveTo(cx - w * 0.23, gy - h * 0.1); ctx.lineTo(cx + w * 0.23, gy - h * 0.1);
+  ctx.lineTo(cx + w * 0.085, topY + h * 0.2); ctx.lineTo(cx - w * 0.085, topY + h * 0.2);
+  ctx.closePath(); ctx.fill();
+  // central accent stripe + airbox fin
+  ctx.fillStyle = L.accent; rrectP(cx - w * 0.035, topY + h * 0.2, w * 0.07, h * 0.5, 1); ctx.fill();
+  ctx.fillStyle = L.base; rrectP(cx - w * 0.055, topY + h * 0.08, w * 0.11, h * 0.16, 1); ctx.fill();
+  if (L.hint) { ctx.fillStyle = L.hint; rrectP(cx - w * 0.02, topY + h * 0.1, w * 0.04, h * 0.12, 1); ctx.fill(); }
+  // rear wing: wide top plane + dark trailing lip + endplates
+  const wingY = topY + h * 0.04, wingH = h * 0.12;
+  ctx.fillStyle = L.wing; rrectP(cx - half, wingY, w, wingH, 2); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(cx - half, wingY + wingH, w, Math.max(1, h * 0.04));
+  ctx.fillStyle = L.accent;
+  rrectP(cx - half, wingY - h * 0.02, w * 0.06, wingH + h * 0.14, 1); ctx.fill();
+  rrectP(cx + half - w * 0.06, wingY - h * 0.02, w * 0.06, wingH + h * 0.14, 1); ctx.fill();
+  // brake-light dot
+  ctx.fillStyle = '#ff3b30'; ctx.beginPath(); ctx.arc(cx, gy - h * 0.2, Math.max(1, w * 0.035), 0, 7); ctx.fill();
 }
 function rrectP(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawWheel() {
