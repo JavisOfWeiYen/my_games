@@ -236,7 +236,7 @@ const TRACKS = [
     [780,820],[300,800],[300,300],[480,270],[470,640],[650,660],[660,280],[840,270],[830,640],[1010,660],[1070,280],[1290,330],[1290,820],
   ] },
 ];
-let trackIndex = +(localStorage.getItem('apexgp-track') || 0) || 0;
+let trackIndex = +(localStorage.getItem('apexgp-track') ?? 1);   // default circuit: Velocity (index 1)
 const bestKey = i => 'apexgp-best:' + TRACKS[i].name;
 function loadBest(i) { try { return +(localStorage.getItem(bestKey(i)) || 0); } catch (e) { return 0; } }
 function catmull(p0, p1, p2, p3, t) {
