@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apex GP — 賽車背後的物理與過彎技巧</title>
+<style>
+  :root{ --bg:#0a0e16; --card:#121826; --ink:#eaf0ff; --dim:#9fb0cf; --green:#46e0a0; --yellow:#ffd24a; --red:#ff5a5f; --line:#26304a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI","Microsoft JhengHei","PingFang TC",sans-serif;
+    line-height:1.85; -webkit-text-size-adjust:100%; }
+  .wrap{ max-width:760px; margin:0 auto; padding:28px 20px 80px; }
+  header{ text-align:center; padding:34px 0 10px; }
+  header h1{ font-size:30px; margin:0 0 6px; letter-spacing:.04em; }
+  header p{ color:var(--dim); margin:0; font-size:15px; }
+  .tag{ display:inline-block; font-size:12px; color:var(--green); border:1px solid var(--green);
+    border-radius:999px; padding:3px 12px; margin-bottom:14px; opacity:.9; }
+  h2{ font-size:21px; margin:38px 0 4px; display:flex; align-items:center; gap:10px; }
+  h2 .n{ font-size:14px; color:var(--bg); background:var(--green); width:28px; height:28px;
+    border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:800; flex:0 0 auto; }
+  .sub{ color:var(--dim); font-size:14px; margin:0 0 12px; padding-left:38px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; margin:14px 0; }
+  .key{ background:rgba(70,224,160,.10); border-left:3px solid var(--green); border-radius:8px;
+    padding:12px 16px; margin:14px 0; }
+  .key b{ color:var(--green); }
+  .formula{ background:#0c1120; border:1px dashed var(--line); border-radius:10px; padding:12px 16px;
+    margin:12px 0; font-size:17px; text-align:center; color:#dfe7fb; }
+  .formula small{ display:block; color:var(--dim); font-size:13px; margin-top:6px; }
+  .analogy{ font-size:14.5px; color:var(--dim); }
+  .analogy b{ color:var(--ink); }
+  svg{ display:block; margin:10px auto; max-width:100%; }
+  table{ width:100%; border-collapse:collapse; margin:12px 0; font-size:14.5px; }
+  th,td{ border:1px solid var(--line); padding:8px 10px; text-align:center; }
+  th{ background:#0c1120; color:var(--dim); font-weight:600; }
+  .gear{ color:var(--green); font-weight:700; }
+  .warn{ color:var(--yellow); }
+  ul{ padding-left:22px; } li{ margin:6px 0; }
+  .kbd{ display:inline-block; background:#0c1120; border:1px solid var(--line); border-bottom-width:2px;
+    border-radius:6px; padding:1px 8px; font-size:13px; color:var(--ink); }
+  footer{ text-align:center; color:var(--dim); font-size:13px; margin-top:50px; }
+  .em{ color:var(--green); font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="tag">Apex GP · 賽車的科學</div>
+  <h1>為什麼賽車這樣開才快？</h1>
+  <p>這台遊戲裡的車，背後其實是一堆物理。<br>這篇用最白話的方式，告訴你它怎麼運作、彎要怎麼過。</p>
+</header>
+
+<!-- 1 -->
+<h2><span class="n">1</span>力、質量、加速度</h2>
+<p class="sub">一切的起點，只有一條公式。</p>
+<div class="card">
+  <div class="formula">力 = 質量 × 加速度<small>F = m × a　→　加速度 a = 力 ÷ 質量</small></div>
+  <p class="analogy">想像你在<b>推一台購物車</b>：你推得越用力（力越大），車加速越快；車上裝越多東西（質量越大），就越難推得動。賽車一樣——引擎給的「力」越大、車越輕，加速就越猛。</p>
+  <div class="key">遊戲裡的車重約 <b>780 公斤</b>，滿油時還要再加 110 公斤的油。所以<b>油越少車越輕、跑越快</b>，這就是為什麼真實 F1 比賽到後段會變快。</div>
+</div>
+
+<!-- 2 -->
+<h2><span class="n">2</span>為什麼不是「越踩越快」？</h2>
+<p class="sub">加速度會隨速度變小 —— 這叫「功率受限」。</p>
+<div class="card">
+  <p class="analogy">你<b>騎腳踏車</b>時有沒有發現：剛起步用力踩，車衝得很快；但騎到一定速度後，再怎麼拚命踩，速度也只是慢慢往上爬？引擎也是這樣。</p>
+  <div class="formula">高速時的推力 = 功率 ÷ 速度<small>速度越快，同樣的「功率」能給的推力就越小</small></div>
+  <p>所以加速度一開始很大，速度越高就越小。畫成圖長這樣：</p>
+  <svg width="420" height="170" viewBox="0 0 420 170">
+    <line x1="40" y1="140" x2="400" y2="140" stroke="#26304a"/>
+    <line x1="40" y1="140" x2="40" y2="20" stroke="#26304a"/>
+    <path d="M40 140 Q120 55 400 38" fill="none" stroke="#46e0a0" stroke-width="3"/>
+    <text x="210" y="162" fill="#9fb0cf" font-size="12" text-anchor="middle">時間 →</text>
+    <text x="20" y="80" fill="#9fb0cf" font-size="12" transform="rotate(-90 20 80)" text-anchor="middle">速度 →</text>
+    <text x="95" y="78" fill="#eaf0ff" font-size="11">起步：衝很快</text>
+    <text x="290" y="32" fill="#9fb0cf" font-size="11">高速：慢慢爬</text>
+  </svg>
+  <div class="key">這就是為什麼起步那段「彈射」感覺超猛——遊戲裡 <b>0 到 100 公里/時只要約 2.4 秒</b>，跟真實 F1 一樣快！但到了高速就拉不太動了。</div>
+</div>
+
+<!-- 3 -->
+<h2><span class="n">3</span>什麼東西讓車停不下來、也快不下去？</h2>
+<p class="sub">兩種阻力：滾動阻力 + 空氣阻力。</p>
+<div class="card">
+  <ul>
+    <li><b>滾動阻力</b>：輪胎和地面摩擦，大小幾乎固定（像你滑行時車自己會慢慢停）。</li>
+    <li><b>空氣阻力</b>：速度<span class="em">平方</span>成長——速度變 2 倍，空氣阻力變 <b>4 倍</b>！這就是為什麼車有「極速」：當推力剛好等於空氣阻力，就再也快不上去了。</li>
+  </ul>
+  <div class="formula">空氣阻力 ∝ 速度 × 速度<small>把手伸出車窗，車越快、風推你的手越用力，而且是「暴增」</small></div>
+  <div class="key">收油門時車為什麼會慢下來？就是這兩個阻力在拖。<b>速度越快、拖得越兇</b>，所以高速放開油門減速很明顯，低速時就很溫和。</div>
+</div>
+
+<!-- 4 -->
+<h2><span class="n">4</span>最重要的觀念：摩擦圓</h2>
+<p class="sub">輪胎的抓地力是「有限的預算」，轉彎和加速要搶著用。</p>
+<div class="card">
+  <p class="analogy">輪胎能抓住地面的力是<b>有上限</b>的。把它想成一個「<b>力的預算</b>」，你可以拿去：<b>① 加速/煞車（前後）</b> 或 <b>② 轉彎（左右）</b>，但<span class="em">兩個加起來不能超過上限</span>。</p>
+  <svg width="280" height="240" viewBox="0 0 280 240">
+    <circle cx="140" cy="120" r="92" fill="rgba(70,224,160,.07)" stroke="#46e0a0" stroke-width="2"/>
+    <line x1="140" y1="120" x2="140" y2="34" stroke="#9fb0cf" stroke-dasharray="4"/>
+    <line x1="140" y1="120" x2="226" y2="120" stroke="#9fb0cf" stroke-dasharray="4"/>
+    <line x1="140" y1="120" x2="200" y2="58" stroke="#ffd24a" stroke-width="3"/>
+    <circle cx="200" cy="58" r="4" fill="#ffd24a"/>
+    <text x="140" y="24" fill="#9fb0cf" font-size="12" text-anchor="middle">煞車</text>
+    <text x="140" y="232" fill="#9fb0cf" font-size="12" text-anchor="middle">加速</text>
+    <text x="250" y="124" fill="#9fb0cf" font-size="12" text-anchor="middle">轉彎</text>
+    <text x="208" y="50" fill="#ffd24a" font-size="11">同時做一點</text>
+    <text x="140" y="124" fill="#46e0a0" font-size="11" text-anchor="middle">上限</text>
+  </svg>
+  <div class="formula">（轉彎的力）² + （加速煞車的力）² ≤ 抓地力²<small>圓圈內 OK，超出圓圈 = 打滑失控</small></div>
+  <div class="key"><b>這解釋了新手最常犯的錯：</b>一邊全油門一邊猛轉彎。油門吃掉了大部分預算，剩下的力不夠轉彎 → 車<span class="warn">「推頭」直直衝出去</span>。正確做法是<b>分開做</b>：先煞車（用滿預算煞車）→ 放開煞車再轉彎（用滿預算轉彎）→ 出彎再加速。</div>
+</div>
+
+<!-- 5 -->
+<h2><span class="n">5</span>過彎為什麼要減速？</h2>
+<p class="sub">因為轉彎需要「向心力」，而它隨速度暴增。</p>
+<div class="card">
+  <p class="analogy">在桌上用橡皮擦繞圈圈，你的手指要一直往內拉它，它才不會飛出去——那股「往圓心拉」的力就是<b>向心力</b>。車過彎也需要這股力，由輪胎抓地提供。</p>
+  <div class="formula">過彎需要的力 = 質量 × 速度 × 速度 ÷ 彎的半徑<small>速度變 2 倍，需要的力變 4 倍！</small></div>
+  <p>但輪胎能給的力有上限（第 4 點）。所以每個彎都有一個<b>過彎極限速度</b>：</p>
+  <div class="formula">最快過彎速度 = √(抓地力 × 彎的半徑)<small>彎越「急」（半徑越小）→ 只能開越慢</small></div>
+  <div class="key">這就是為什麼<b>大彎可以開快、小彎（髮夾彎）一定要慢</b>。超過極限速度，輪胎抓不住，車就滑出去。</div>
+</div>
+
+<!-- 6 -->
+<h2><span class="n">6</span>開越快反而抓越牢？下壓力的魔法</h2>
+<p class="sub">空氣把車「壓」在地上。</p>
+<div class="card">
+  <p class="analogy">F1 車身和尾翼的形狀，會讓高速時的空氣<b>把車往下壓</b>（跟飛機翅膀相反）。速度越快，下壓力越大，輪胎就被壓得越緊、抓地越強。</p>
+  <div class="key">所以高速彎其實比你想的能更快過——因為速度本身帶來了額外抓地力。但<b>低速彎就沒有這個好處</b>，只能乖乖慢慢過。</div>
+</div>
+
+<!-- 7 -->
+<h2><span class="n">7</span>煞車時車頭會「點頭」：重量轉移</h2>
+<p class="sub">加速和煞車會改變四個輪胎的受力。</p>
+<div class="card">
+  <p class="analogy">公車緊急煞車時，你會往前傾對吧？車也一樣：<b>煞車時重量壓向前輪</b>（車頭下沉），<b>加速時重量壓向後輪</b>（車頭抬起）。</p>
+  <div class="key">被壓住的輪胎抓地力更強。所以煞車時前輪抓得牢、加速時後輪抓得牢——聰明的駕駛會利用這點：<b>進彎時輕點煞車，讓前輪更有抓地力去轉向。</b></div>
+</div>
+
+<!-- 8 -->
+<h2><span class="n">8</span>輪胎要「熱身」才好用</h2>
+<p class="sub">太冷、太熱都不抓地，中間有個甜蜜點。</p>
+<div class="card">
+  <p class="analogy">輪胎像<b>口香糖</b>：太冷會硬梆梆（不黏）、太熱會爛糊糊（也不黏），<b>溫溫的時候最黏</b>。賽車胎的最佳工作溫度大約 80～90°C。</p>
+  <svg width="380" height="150" viewBox="0 0 380 150">
+    <line x1="30" y1="120" x2="360" y2="120" stroke="#26304a"/>
+    <path d="M40 110 Q190 0 340 110" fill="none" stroke="#46e0a0" stroke-width="3"/>
+    <text x="55" y="112" fill="#5a8bff" font-size="11">冷·不抓</text>
+    <text x="165" y="22" fill="#46e0a0" font-size="11">剛剛好</text>
+    <text x="300" y="112" fill="#ff5a5f" font-size="11">過熱·不抓</text>
+    <text x="195" y="142" fill="#9fb0cf" font-size="12" text-anchor="middle">胎溫 →</text>
+  </svg>
+  <div class="key">所以剛開始跑、或在草地上慢慢爬太久，輪胎是冷的、抓地差；要先<b>跑個一兩圈把胎溫養起來</b>（儀表板 TYRE 變綠/黃）才好開。但一直猛烈打滑又會<span class="warn">過熱</span>，反而變差——這就是「顧輪胎」的學問。</div>
+</div>
+
+<!-- 9 -->
+<h2><span class="n">9</span>過彎技巧：走線與「慢進快出」</h2>
+<p class="sub">最快的路線不是最短的，而是最「直」的。</p>
+<div class="card">
+  <p>同樣一個彎，你可以用整個賽道的寬度把它「<b>拉直</b>」，讓彎變得沒那麼急（半徑變大）——半徑越大，能開越快（第 5 點）。標準走法是 <span class="em">外側進 → 切內側頂點 → 外側出</span>：</p>
+  <svg width="420" height="220" viewBox="0 0 420 220">
+    <path d="M20 30 H400 A1 1 0 0 1 400 30 Q400 150 250 175 Q120 196 60 196" fill="none" stroke="#26304a" stroke-width="34" stroke-linecap="round"/>
+    <path d="M40 44 Q330 50 250 130 Q170 196 70 182" fill="none" stroke="#46e0a0" stroke-width="3" stroke-dasharray="7 5"/>
+    <circle cx="40" cy="44" r="5" fill="#46e0a0"/><text x="48" y="38" fill="#46e0a0" font-size="12">① 外側進（先減速）</text>
+    <circle cx="262" cy="120" r="6" fill="#ffd24a"/><text x="272" y="116" fill="#ffd24a" font-size="12">② Apex 頂點</text>
+    <circle cx="70" cy="182" r="5" fill="#46e0a0"/><text x="80" y="198" fill="#46e0a0" font-size="12">③ 外側出（開始加速）</text>
+  </svg>
+  <div class="key"><b>Apex（頂點）</b>就是你的路線最貼近彎道內緣的那一點。過了 Apex 代表彎過了一半、車頭已朝向出口，這時才<b>慢慢補油</b>加速。</div>
+  <p style="margin-top:16px"><b class="em">口訣：慢進快出。</b>寧可進彎慢一點，換出彎能更早全油門衝直線——這樣整體反而更快、也更穩。新手最該記的一句話。</p>
+</div>
+
+<!-- 10 -->
+<h2><span class="n">10</span>掉到草地上為什麼超難開？</h2>
+<div class="card">
+  <p>草地的抓地力只有柏油路的<b>大約六成</b>，而且阻力很大。回到第 4 點的「力預算」：預算被砍小了，又要轉彎又要前進，常常不夠用 → 打滑。</p>
+  <div class="key">所以掉草地時：<b>先鬆開油門</b>讓車慢下來、把方向慢慢轉回賽道，<span class="warn">千萬別滿油門硬轉</span>（那樣後輪會直接打滑甩出去）。慢慢來，先求回到柏油路。</div>
+</div>
+
+<!-- cheat sheet -->
+<h2><span class="n">★</span>一張表記住怎麼開</h2>
+<div class="card">
+  <table>
+    <tr><th>情況</th><th>該做什麼</th><th>為什麼</th></tr>
+    <tr><td>進彎前</td><td>在直線上就煞好車</td><td>煞車和轉彎不能同時用滿（摩擦圓）</td></tr>
+    <tr><td>彎中</td><td>放煞車、瞄準 Apex</td><td>把抓地力預算全給轉向</td></tr>
+    <tr><td>過了 Apex</td><td>車身擺正後慢慢補油</td><td>慢進快出，提早衝直線</td></tr>
+    <tr><td>大彎 / 高速彎</td><td>可以開快</td><td>半徑大 + 下壓力幫忙</td></tr>
+    <tr><td>髮夾彎 / 小彎</td><td>一定要慢（一二檔）</td><td>半徑小，過彎極限速度低</td></tr>
+    <tr><td>掉草地</td><td>先鬆油、慢慢轉回</td><td>抓地只剩六成，硬轉會打滑</td></tr>
+  </table>
+  <div class="key">控制鍵：<span class="kbd">W / ↑</span> 油門 · <span class="kbd">S / ↓</span> 煞車 · <span class="kbd">A D / ← →</span> 轉向 · <span class="kbd">Shift</span> ERS 加速 · <span class="kbd">F</span> DRS · <span class="kbd">空白</span> 手煞車</div>
+</div>
+
+<footer>
+  Apex GP — 賽車的科學　·　看懂了，再回去開一圈試試看 🏁
+</footer>
+
+</div>
+</body>
+</html>
