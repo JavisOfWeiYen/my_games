@@ -504,6 +504,7 @@ function render() {
   setupProjection();
   drawRoad();
   drawMarksP();
+  drawCars();
   drawSmokeP();
   vignette();
   drawWheel();
@@ -568,6 +569,35 @@ function drawMarksP() {
 function drawSmokeP() {
   for (const sm of smoke) { const p = project(sm.x, sm.y); if (!p) continue; ctx.globalAlpha = sm.life * 0.4; ctx.fillStyle = '#dde2ec'; const r = Math.min(70, p.sc * sm.sz); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1;
+}
+// rival cars as ground-anchored billboards: project each to its tyre-contact point and scale by
+// distance (project's `sc` = pixels-per-metre there). Drawn far -> near so nearer cars overlap.
+function drawCars() {
+  const list = [];
+  for (const c of aiCars) { const p = project(c.x, c.y); if (p && p.fwd < 280) list.push({ c, p }); }
+  list.sort((a, b) => b.p.fwd - a.p.fwd);
+  for (const { c, p } of list) drawCarSprite(c, p);
+}
+function drawCarSprite(c, p) {
+  const sc = p.sc, w = 1.95 * sc, h = 1.15 * sc, cx = p.x, gy = p.y;     // ~2m wide, ~1.15m tall at this distance
+  if (cx < -w || cx > W + w || w < 1.2) return;                          // off-screen / too tiny to bother
+  const topY = gy - h, rb = Math.min(5, w * 0.13);
+  // ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,.30)'; ctx.beginPath(); ctx.ellipse(cx, gy, w * 0.62, h * 0.26, 0, 0, 7); ctx.fill();
+  // rear tyres
+  const tw = w * 0.27, tht = h * 0.5;
+  ctx.fillStyle = '#15171c';
+  rrectP(cx - w * 0.5, gy - tht, tw, tht, Math.min(3, tw * 0.4)); ctx.fill();
+  rrectP(cx + w * 0.5 - tw, gy - tht, tw, tht, Math.min(3, tw * 0.4)); ctx.fill();
+  // body
+  ctx.fillStyle = c.col;
+  rrectP(cx - w * 0.43, topY + h * 0.2, w * 0.86, h * 0.66, rb); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = Math.max(1, sc * 0.05); ctx.stroke();
+  // cockpit slot
+  ctx.fillStyle = 'rgba(8,12,20,.62)'; rrectP(cx - w * 0.15, topY + h * 0.26, w * 0.3, h * 0.34, Math.min(3, w * 0.05)); ctx.fill();
+  // rear wing
+  ctx.fillStyle = c.col; rrectP(cx - w * 0.5, topY, w, h * 0.15, 1); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(cx - w * 0.5, topY + h * 0.15, w, Math.max(1, h * 0.05));
 }
 function rrectP(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawWheel() {
@@ -805,10 +835,12 @@ window.addEventListener('resize', resize);
 // place every car on the start grid, just past the line (small lateral + longitudinal stagger so dots are distinct)
 function gridCars() {
   const pts = track.pts, N = pts.length;
-  allCars.forEach((c, slot) => {
+  // front -> back: two rivals ahead, the player 3rd, one rival behind, so opponents are in view from the off
+  const order = [aiCars[0], aiCars[1], car, aiCars[2]];
+  order.forEach((c, gp) => {
     resetCar(c);
-    const idx = ((allCars.length - 1 - slot) * 2) % N, p = pts[idx];   // player (slot 0) starts on pole, rivals line up behind
-    const side = slot ? (slot % 2 ? -1 : 1) * 3.4 : 0;
+    const idx = ((order.length - 1 - gp) * 2) % N, p = pts[idx];
+    const side = (gp % 2 ? -1 : 1) * 3.4;
     c.x = p.x + p.nx * side; c.y = p.y + p.ny * side; c.a = Math.atan2(p.uy, p.ux);
     c.vx = c.vy = c.av = 0;
     c.nearIdx = idx; c.lap = 1; c.s = p.s; c.lastS = p.s;
