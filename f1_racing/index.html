@@ -169,6 +169,7 @@ const allCars = [car, ...aiCars];
 let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
+let countdown = 0, finished = false, standings = null, goFlash = 0;   // race start lights + finish standings
 let W = 0, H = 0, dpr = 1, zoom = 8.0, camX = 0, camY = 0, camA = 0, shake = 0;
 const marks = [];            // skid marks (world coords), capped
 const smoke = [];            // tyre-smoke particles, capped
@@ -518,6 +519,59 @@ function render() {
   vignette();
   drawWheel();
   drawHud();
+  if (countdown > 0) drawStartLights();
+  else if (goFlash > 0) drawGo();
+  if (finished) drawResults();
+}
+function drawStartLights() {
+  const num = Math.max(1, Math.ceil(countdown - 0.2));   // 3.2..0.2 -> 3, 2, 1
+  ctx.fillStyle = 'rgba(6,9,15,.32)'; ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H * 0.32, R = Math.min(W, H) * 0.052;
+  for (let i = 0; i < 3; i++) {
+    const lit = i < num, lx = cx + (i - 1) * R * 2.6;
+    ctx.fillStyle = lit ? '#ff3b30' : 'rgba(120,40,40,.35)';
+    ctx.beginPath(); ctx.arc(lx, cy - R * 1.7, R, 0, 7); ctx.fill();
+    if (lit) { ctx.globalAlpha = .4; ctx.beginPath(); ctx.arc(lx, cy - R * 1.7, R * 1.5, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = num === 1 ? '#ffd24a' : '#ff5a5f';
+  ctx.font = '900 ' + Math.round(R * 3.4) + 'px system-ui, sans-serif';
+  ctx.fillText(num, cx, cy + R * 1.4);
+  ctx.font = '700 ' + Math.round(R * 0.6) + 'px system-ui, sans-serif'; ctx.fillStyle = '#9fb0cf';
+  ctx.fillText('GET READY 準備', cx, cy + R * 3.2);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+}
+function drawGo() {
+  ctx.globalAlpha = Math.min(1, goFlash * 1.8);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#46e0a0'; ctx.font = '900 ' + Math.round(Math.min(W, H) * 0.16) + 'px system-ui, sans-serif';
+  ctx.fillText('GO!', W / 2, H * 0.32);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+}
+function drawResults() {
+  ctx.fillStyle = 'rgba(6,9,15,.80)'; ctx.fillRect(0, 0, W, H);
+  const cx = W / 2; let y = Math.max(60, H * 0.16);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#eaf0ff'; ctx.font = '900 32px system-ui, sans-serif'; ctx.fillText('🏁 完賽 FINISH', cx, y);
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 14px system-ui, sans-serif'; ctx.fillText(track.name + ' · ' + track.laps + ' 圈 laps', cx, y + 24);
+  y += 58;
+  const rowH = 40, w = Math.min(440, W * 0.86), x0 = cx - w / 2;
+  (standings || []).forEach((c, i) => {
+    const isP = c === car;
+    ctx.fillStyle = isP ? 'rgba(70,224,160,.18)' : 'rgba(20,26,40,.65)'; rrectP(x0, y, w, rowH - 6, 9); ctx.fill();
+    if (isP) { ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    ctx.textAlign = 'left'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#eaf0ff'; ctx.font = '800 19px system-ui, sans-serif';
+    ctx.fillText('P' + (i + 1), x0 + 16, y + 24);
+    ctx.fillStyle = c.col; ctx.beginPath(); ctx.arc(x0 + 64, y + 17, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = isP ? '#46e0a0' : '#dbe3f2'; ctx.font = '700 16px system-ui, sans-serif';
+    ctx.fillText(isP ? 'YOU 你' : c.name, x0 + 80, y + 23);
+    y += rowH;
+  });
+  ctx.textAlign = 'center'; ctx.fillStyle = '#9fb0cf'; ctx.font = '600 14px system-ui, sans-serif';
+  ctx.fillText('BEST 最佳單圈 ' + fmt(best), cx, y + 18);
+  ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif';
+  ctx.fillText('按 R 再比一場　·　R to race again', cx, y + 42);
+  ctx.textAlign = 'left';
 }
 // interpolated road cross-section ("rib") at parameter t in [0,1] between pts[i] and pts[i+1]
 function rib(i, t) {
@@ -771,7 +825,7 @@ function drawMinimap() {
 }
 
 // ===== 9. AUDIO (engine) =====
-let actx, master, eOsc, eOsc2, eGain, eLfo, eLfoGain, audioReady = false;
+let actx, master, eOsc, eOsc2, eGain, eLfo, eLfoGain, audioReady = false, rivalVoices = [];
 function initAudio() {
   if (actx) { actx.resume(); return; }
   try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
@@ -786,11 +840,22 @@ function initAudio() {
   eOsc.connect(f); eOsc2.connect(sub); sub.connect(f); f.connect(eGain); eGain.connect(master);
   eLfo = actx.createOscillator(); eLfo.type = 'sawtooth'; eLfo.frequency.value = 25;
   eLfoGain = actx.createGain(); eLfoGain.gain.value = 0; eLfo.connect(eLfoGain); eLfoGain.connect(eGain.gain);
+  // one quieter, panned voice per rival -> you hear cars near you, placed left/right
+  rivalVoices = aiCars.map(() => {
+    const o = actx.createOscillator(); o.setPeriodicWave(wave); o.frequency.value = 60;
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
+    const g = actx.createGain(); g.gain.value = 0;
+    const pan = actx.createStereoPanner ? actx.createStereoPanner() : null;
+    o.connect(lp); lp.connect(g);
+    if (pan) { g.connect(pan); pan.connect(master); } else { g.connect(master); }
+    o.start();
+    return { o, g, pan };
+  });
   eOsc.start(); eOsc2.start(); eLfo.start(); audioReady = true;
 }
 function updateAudio() {
   if (!audioReady) return;
-  const live = running && !paused, now = actx.currentTime;
+  const live = running && !paused && !finished, now = actx.currentTime;
   // drive the engine note from the same gear/rpm the tach shows, so the pitch
   // climbs through a gear and drops on the up-shift (matching the dashboard)
   const { gear, rpm, speed } = revInfo();
@@ -802,6 +867,17 @@ function updateAudio() {
   const vol = live ? 0.06 + spd * 0.10 : 0;
   eGain.gain.setTargetAtTime(vol, now, 0.08);
   eLfoGain.gain.setTargetAtTime(live ? vol * 0.5 : 0, now, 0.08);
+  // rival engines: pitch from each rival's speed, volume from how close it is, panned left/right
+  const cs = Math.cos(camYaw), sn = Math.sin(camYaw);
+  for (let i = 0; i < rivalVoices.length; i++) {
+    const a = aiCars[i], v = rivalVoices[i];
+    const dx = a.x - car.x, dy = a.y - car.y, dist = Math.hypot(dx, dy);
+    const rspd = Math.hypot(a.vx, a.vy);
+    v.o.frequency.setTargetAtTime(48 + Math.min(1, rspd / 70) * 150 + (a.throttle || 0) * 15, now, 0.1);
+    const near = Math.max(0, 1 - dist / 48);                    // audible within ~48 m
+    v.g.gain.setTargetAtTime(live ? near * near * 0.06 : 0, now, 0.12);
+    if (v.pan) v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, (-dx * sn + dy * cs) / 18)), now, 0.12);
+  }
 }
 
 // ===== 10. LOOP =====
@@ -820,6 +896,13 @@ function resolveCollisions() {
       if (vn < 0) {                                                              // only respond if approaching
         const j = -(1 + 0.15) * vn / 2;                                          // low restitution -> a thunk
         A.vx -= j * nx; A.vy -= j * ny; B.vx += j * nx; B.vy += j * ny;
+        // side-impact deflection: a glancing hit (normal across the car) twists the nose AWAY from
+        // contact; a square rear-end barely yaws. "side-on-ness" = how perpendicular the hit is to heading.
+        const impact = Math.min(1, -vn / 16), K = 1.7;
+        const sideA = 1 - Math.abs(Math.cos(A.a) * nx + Math.sin(A.a) * ny);     // 1 = pure side hit, 0 = rear/front
+        const sideB = 1 - Math.abs(Math.cos(B.a) * nx + Math.sin(B.a) * ny);
+        A.av -= Math.sign(Math.cos(A.a) * ny - Math.sin(A.a) * nx) * impact * sideA * K;  // B is on this side -> turn away
+        B.av += Math.sign(Math.cos(B.a) * ny - Math.sin(B.a) * nx) * impact * sideB * K;
       }
     }
   }
@@ -832,9 +915,15 @@ function updateProgress(c, isPlayer) {
     if (isPlayer) {
       if (started && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
       lap = c.lap; lapStart = perf; lapNow = 0;
+      if (c.lap > track.laps) finishRace();             // crossed the line on the final lap -> race over
     }
   }
   c.lastS = s;
+}
+function finishRace() {
+  finished = true;
+  const prog = c => c.lap * track.total + c.s;
+  standings = allCars.slice().sort((a, b) => prog(b) - prog(a));   // final order by distance covered
 }
 // standings: how many cars are further round the track than the player (progress = laps*length + arc-pos)
 function racePosition() {
@@ -846,20 +935,26 @@ function loop(t) {
   requestAnimationFrame(loop);
   if (!lastT) lastT = t;
   let dt = (t - lastT) / 1000; lastT = t; perf = t;
-  if (running && !paused) {
+  if (running && !paused && !finished) {
     dt = Math.min(dt, 0.033);
-    const sub = 2;
-    // player: input from the keyboard / on-screen buttons
-    applyInput(car, input, dt);
-    for (let i = 0; i < sub; i++) { const r = step(car, input, dt / sub); if (i === sub - 1 && r.surf.surf === 'grass' && r.speed > 30) shake = 2.2; }
-    // rivals: same physics, input from the AI driver
-    for (const a of aiCars) { const ai = aiDriver(a); applyInput(a, ai, dt); for (let i = 0; i < sub; i++) step(a, ai, dt / sub); }
-    resolveCollisions();
-    // lap timing + progress for every car
-    lapNow = perf - lapStart;
-    updateProgress(car, true);
-    for (const a of aiCars) updateProgress(a, false);
+    if (countdown > 0) {
+      countdown -= dt;                                   // start lights: cars are held on the grid
+      if (countdown <= 0) { countdown = 0; lapStart = perf; lapNow = 0; goFlash = 0.8; }   // lights out — GO! lap timing starts now
+    } else {
+      const sub = 2;
+      // player: input from the keyboard / on-screen buttons
+      applyInput(car, input, dt);
+      for (let i = 0; i < sub; i++) { const r = step(car, input, dt / sub); if (i === sub - 1 && r.surf.surf === 'grass' && r.speed > 30) shake = 2.2; }
+      // rivals: same physics, input from the AI driver
+      for (const a of aiCars) { const ai = aiDriver(a); applyInput(a, ai, dt); for (let i = 0; i < sub; i++) step(a, ai, dt / sub); }
+      resolveCollisions();
+      // lap timing + progress for every car
+      lapNow = perf - lapStart;
+      updateProgress(car, true);
+      for (const a of aiCars) updateProgress(a, false);
+    }
   }
+  if (goFlash > 0) goFlash = Math.max(0, goFlash - dt);
   // age smoke
   for (const sm of smoke) { sm.x += sm.vx * 0.02; sm.y += sm.vy * 0.02; sm.sz += 0.06; sm.life -= 0.02; }
   for (let i = smoke.length - 1; i >= 0; i--) if (smoke[i].life <= 0) smoke.splice(i, 1);
@@ -908,12 +1003,17 @@ trackPick.addEventListener('click', e => {
   const btn = e.target.closest('.tchip'); if (!btn) return;
   loadTrack(+btn.dataset.i); renderTrackPicker();   // live-preview the chosen circuit behind the overlay
 });
-function startGame() {
+// grid the field and arm the 3-second start lights; the loop holds the cars until the lights go out
+function beginRace() {
   gridCars(); camYaw = car.a;
   lap = 1; lapStart = perf; lapNow = 0; lastS = 0;
+  countdown = 3.2; finished = false; standings = null;
+}
+function startGame() {
+  beginRace();
   initAudio(); $('#overlay').classList.add('hidden'); running = true; paused = false; started = 1;
 }
-function resetToStart() { gridCars(); camYaw = car.a; lap = 1; lapStart = perf; lapNow = 0; lastS = 0; }
+function resetToStart() { beginRace(); running = true; paused = false; }
 function togglePause() {
   if (!started || !running) return; paused = !paused; const ov = $('#overlay');
   if (paused) { ov.querySelector('h1').textContent = 'Paused'; ov.querySelector('p').innerHTML = 'Take a breather. 暫停中'; ov.querySelector('#ovBtn').textContent = '▶ Resume 繼續'; ov.classList.remove('hidden'); }
