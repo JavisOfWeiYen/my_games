@@ -52,6 +52,12 @@
     letter-spacing: .05em; color: #07101f; background: linear-gradient(90deg,#46e0a0,#5db8ff); cursor: pointer;
   }
   #overlay button:active { transform: scale(.96); }
+  #trackPick { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 480px; }
+  #overlay .tchip { border: 1px solid rgba(120,135,165,.4); border-radius: 10px; background: rgba(20,26,40,.6);
+    color: #cdd6ea; padding: 8px 14px; font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0;
+    text-transform: none; line-height: 1.25; cursor: pointer; }
+  #overlay .tchip small { display: block; color: #7d8db0; font-weight: 400; font-size: 11px; margin-top: 2px; }
+  #overlay .tchip.on { border-color: #46e0a0; background: rgba(70,224,160,.14); color: #eaf0ff; }
 </style>
 </head>
 <body>
@@ -84,6 +90,7 @@
     <h1>Apex GP</h1>
     <p>A first-person racing <b>simulator</b> — real grip, weight transfer and slides, with tyres that wear and heat up, ERS boost, DRS and a draining fuel load. Brake early, hit the apex, feed the throttle out of the corner. 第一人稱賽車模擬：真實抓地與配重，輪胎會磨耗升溫、ERS 加速、DRS、油量遞減。抓煞車點、切 Apex、出彎補油。</p>
     <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · <b>Shift ERS</b> · <b>F DRS</b> · <b>T tyres 換胎</b> · R reset · P pause<br>📱 on-screen buttons (incl. ERS / DRS / 胎)</p>
+    <div id="trackPick"></div>
     <button id="ovBtn">▶ Drive 開始</button>
     <a href="the-science.html" style="color:#9fb0cf;font-size:13px;margin-top:2px;text-decoration:none;border-bottom:1px dotted rgba(159,176,207,.5)">📖 賽車背後的物理與過彎技巧</a>
   </div>
@@ -144,18 +151,26 @@ const marks = [];            // skid marks (world coords), capped
 const smoke = [];            // tyre-smoke particles, capped
 const input = { gas: 0, brake: 0, left: 0, right: 0, hand: 0, boost: 0, drs: 0 };
 let grassPat = null, asphaltPat = null;
-best = +(localStorage.getItem('apexgp-best') || 0);
+// best lap is per-track; it's loaded by loadTrack() once a circuit is chosen.
 
 // ===== 3. TRACK (Catmull-Rom through control points -> centreline) =====
 // Tracks are pure data: add a new circuit by pushing another { name, laps, control } entry.
 // `control` is the list of [x, y] control points (metres) the centreline is splined through.
 const TRACKS = [
-  { name: 'Apex GP', laps: 3, control: [
+  { name: 'Apex GP', laps: 3, blurb: '混合彎道 · 入門', control: [
     [220,820],[900,820],[1180,720],[1330,560],[1240,415],[1370,300],[1180,200],
     [935,250],[820,420],[660,440],[560,355],[420,445],[280,360],[168,490],[180,690],
   ] },
+  { name: 'Velocity', laps: 3, blurb: '高速流暢 · 大直線', control: [
+    [650,820],[1080,815],[1300,660],[1320,430],[1150,250],[820,225],[560,250],[330,330],[210,540],[360,740],
+  ] },
+  { name: 'Hairpin Park', laps: 2, blurb: '狹窄技術 · 連續髮夾', control: [
+    [780,820],[300,800],[300,300],[480,270],[470,640],[650,660],[660,280],[840,270],[830,640],[1010,660],[1070,280],[1290,330],[1290,820],
+  ] },
 ];
-let trackIndex = 0;
+let trackIndex = +(localStorage.getItem('apexgp-track') || 0) || 0;
+const bestKey = i => 'apexgp-best:' + TRACKS[i].name;
+function loadBest(i) { try { return +(localStorage.getItem(bestKey(i)) || 0); } catch (e) { return 0; } }
 function catmull(p0, p1, p2, p3, t) {
   const t2 = t * t, t3 = t2 * t;
   return {
@@ -633,8 +648,9 @@ function drawTelemetry() {
 function drawHud() {
   // top-left: lap count + best lap (the live lap time lives on the dash)
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + lap, 16, 28);
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + lap + (track.laps ? ' / ' + track.laps : ''), 16, 28);
   ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 48);
+  ctx.fillStyle = '#5a6a88'; ctx.font = '600 11px system-ui, sans-serif'; ctx.fillText('🏁 ' + (track.name || ''), 16, 66);
   drawTelemetry();
   drawDash();
   drawMinimap();
@@ -702,7 +718,7 @@ function loop(t) {
     // lap timing via arc-position wrap
     const s = querySurface(car.x, car.y, car).s;
     if (lastS > track.total * 0.7 && s < track.total * 0.25) {     // crossed finish forward
-      if (started && lap >= 1 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem('apexgp-best', Math.round(best)); } catch (e) {} }
+      if (started && lap >= 1 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
       lap++; lapStart = perf; lapNow = 0;
     }
     lastS = s;
@@ -722,6 +738,25 @@ function resize() {
 window.addEventListener('resize', resize);
 
 // ===== 11. CONTROLS =====
+// Switch circuit: rebuild the track from data, put the car on its grid, load that
+// track's own best lap. Everything else (physics/render/minimap) reads from `track`.
+function loadTrack(i) {
+  trackIndex = (i % TRACKS.length + TRACKS.length) % TRACKS.length;
+  buildTrack(TRACKS[trackIndex]);
+  resetCar(car); camYaw = car.a;
+  lap = 1; lapStart = perf; lapNow = 0; lastS = 0;
+  best = loadBest(trackIndex);
+  try { localStorage.setItem('apexgp-track', trackIndex); } catch (e) {}
+}
+const trackPick = $('#trackPick');
+function renderTrackPicker() {
+  trackPick.innerHTML = TRACKS.map((t, i) =>
+    `<button class="tchip${i === trackIndex ? ' on' : ''}" data-i="${i}">${t.name}<small>${t.blurb || ''}</small></button>`).join('');
+}
+trackPick.addEventListener('click', e => {
+  const btn = e.target.closest('.tchip'); if (!btn) return;
+  loadTrack(+btn.dataset.i); renderTrackPicker();   // live-preview the chosen circuit behind the overlay
+});
 function startGame() {
   resetCar(car); camYaw = car.a;
   lap = 1; lapStart = perf; lapNow = 0; lastS = 0;
@@ -762,7 +797,7 @@ hold('#bErs', 'boost'); hold('#bDrs', 'drs');
 $('#bTyre').addEventListener('click', cycleTyre);
 
 // ===== start =====
-buildTrack(); resetCar(car); camYaw = car.a; resize(); requestAnimationFrame(loop);
+loadTrack(trackIndex); renderTrackPicker(); resize(); requestAnimationFrame(loop);
 </script>
 </body>
 </html>
