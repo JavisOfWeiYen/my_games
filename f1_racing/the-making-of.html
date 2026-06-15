@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apex GP — 開發歷程 The Making Of</title>
+<style>
+  :root{ --bg:#0a0e16; --card:#121826; --ink:#eaf0ff; --dim:#9fb0cf; --green:#46e0a0; --line:#26304a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI","Microsoft JhengHei","PingFang TC",sans-serif;
+    line-height:1.8; }
+  .wrap{ max-width:760px; margin:0 auto; padding:28px 20px 80px; }
+  header{ text-align:center; padding:34px 0 6px; }
+  header h1{ font-size:30px; margin:0 0 6px; letter-spacing:.04em; }
+  header p{ color:var(--dim); margin:0; font-size:15px; }
+  .tag{ display:inline-block; font-size:12px; color:var(--green); border:1px solid var(--green);
+    border-radius:999px; padding:3px 12px; margin-bottom:14px; opacity:.9; }
+  .phase{ margin:34px 0 10px; font-size:14px; letter-spacing:.06em; color:var(--green); text-transform:uppercase; }
+  .phase span{ color:var(--dim); text-transform:none; letter-spacing:0; }
+  ol{ list-style:none; counter-reset:step; padding:0; margin:0; }
+  li{ counter-increment:step; position:relative; background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:14px 18px 14px 56px; margin:10px 0; }
+  li::before{ content:counter(step); position:absolute; left:14px; top:14px; width:28px; height:28px;
+    background:var(--green); color:var(--bg); border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-weight:800; font-size:14px; }
+  li h3{ margin:0 0 3px; font-size:16px; }
+  li p{ margin:0; color:var(--dim); font-size:14px; }
+  .note{ text-align:center; color:var(--dim); font-size:14px; margin:30px auto 0; max-width:560px;
+    background:rgba(70,224,160,.08); border-left:3px solid var(--green); border-radius:8px; padding:12px 16px; }
+  footer{ text-align:center; color:var(--dim); font-size:13px; margin-top:46px; }
+  footer a{ color:var(--green); text-decoration:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="tag">Apex GP · 開發歷程</div>
+  <h1>這台賽車遊戲是怎麼長出來的</h1>
+  <p>依照開發的先後順序，一步一步從一台會動的車，<br>變成能跟 7 個 AI 對手競速的完整賽事。</p>
+</header>
+
+<div class="phase">階段一 · <span>打好基礎：一台能開的車</span></div>
+<ol>
+  <li><h3>賽車物理引擎 + 第一人稱座艙</h3><p>真實的輪胎抓地與滑移、可控甩尾、撞牆能再開回來，並改成從座艙內往外看的視角。</p></li>
+  <li><h3>儀表板與引擎聲</h3><p>加上時速/檔位/轉速儀表，引擎聲隨檔位與轉速同步變化。</p></li>
+  <li><h3>放進首頁遊戲牆</h3><p>把 Apex GP 收進專案首頁的遊戲清單，配上截圖。</p></li>
+</ol>
+
+<div class="phase">階段二 · <span>像真的 F1：賽車系統</span></div>
+<ol start="4" style="counter-reset:step 3">
+  <li><h3>輪胎、ERS、DRS、油量</h3><p>輪胎會磨耗升溫、ERS 電能加速、DRS 降阻力拉極速、油量遞減（車變輕變快），鎖死還會冒煙。</p></li>
+</ol>
+
+<div class="phase">階段三 · <span>把手感調對</span></div>
+<ol start="5" style="counter-reset:step 4">
+  <li><h3>物理大調校</h3><p>加速改成「功率受限」(不再線性)、草地變得可控、輪胎能達到工作溫度、收油不再驟降；方向盤標記換成乾淨的設計。</p></li>
+</ol>
+
+<div class="phase">階段四 · <span>為擴充鋪路</span></div>
+<ol start="6" style="counter-reset:step 5">
+  <li><h3>重構：把資料和邏輯分開</h3><p>賽道變成「資料」、物理不再綁死單一台車——讓同一套物理能跑任意賽道、任意數量的車。這步是後面加賽道和 AI 的關鍵。</p></li>
+</ol>
+
+<div class="phase">階段五 · <span>學習與賽道</span></div>
+<ol start="7" style="counter-reset:step 6">
+  <li><h3>「賽車的科學」教學頁</h3><p>用國中生也懂的白話，講解背後的物理與過彎技巧。</p></li>
+  <li><h3>三條風格賽道 + 起跑選單</h3><p>混合彎道、高速流暢、狹窄技術三條手工賽道，開始畫面可選。</p></li>
+</ol>
+
+<div class="phase">階段六 · <span>對手登場（AI）</span></div>
+<ol start="9" style="counter-reset:step 8">
+  <li><h3>AI 大腦 + 小地圖對手</h3><p>AI 會看前方賽道、算出每個彎的安全速度，決定油門/煞車/轉向；先在小地圖上以圓點呈現。</p></li>
+  <li><h3>更強、各有個性的對手</h3><p>每台車有自己的駕駛風格(過彎積極度、煞車點)，跑出有快有慢的差距。</p></li>
+  <li><h3>把對手畫進第一人稱畫面</h3><p>對手以隊色車輛、依距離縮放、由遠到近畫在賽道上。</p></li>
+  <li><h3>車對車碰撞</h3><p>車子會互相推擠(動量轉移)，側撞還會把車頭轉歪。</p></li>
+  <li><h3>真實 2026 F1 車隊塗裝</h3><p>對手換上 McLaren、Ferrari、Red Bull、Mercedes、Aston Martin、Alpine、Audi 的隊色。</p></li>
+</ol>
+
+<div class="phase">階段七 · <span>變成一場真正的比賽</span></div>
+<ol start="14" style="counter-reset:step 13">
+  <li><h3>起跑燈號、完賽結算、對手引擎聲、側撞偏轉</h3><p>3 秒燈滅起跑、跑完顯示名次、聽得到身邊對手的引擎、擦撞會把車轉開。</p></li>
+  <li><h3>可選 0–7 個對手</h3><p>主選單能選同場對手數量，車隊池共 7 支。</p></li>
+  <li><h3>容易 / 困難 難度</h3><p>容易=保守乾淨；困難=積極、晚煞車、逼極限、以最快圈速為目標(偶爾跑寬)。</p></li>
+  <li><h3>正規起跑格 + 圈數修正</h3><p>車隊改在起跑線「後方」排成起跑格，燈滅後衝線；第一次過線算起跑、之後才算完成圈數。</p></li>
+</ol>
+
+<div class="note">
+  整個過程都是 <b>一個 HTML 檔</b> 慢慢長大的——沒有外部函式庫、不用編譯。
+  每一步都先「做出來、實際開一輪驗證」，再進下一步。
+</div>
+
+<footer>
+  Apex GP　·　<a href="index.html">▶ 開始玩</a>　·　<a href="the-science.html">📖 賽車的科學</a>
+</footer>
+
+</div>
+</body>
+</html>
