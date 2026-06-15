@@ -106,8 +106,9 @@ const MASS = 780, INERTIA = 1500;                // higher inertia = steadier, l
 const A = 1.25, B = 1.55, WHEELBASE = A + B;     // CG-to-front, CG-to-rear
 const CA_F = -5.0, CA_R = -7.2;                  // much stiffer rear = strong understeer bias (stable)
 const MAX_GRIP = 3.3;                            // base friction (×weight) — more grip = makeable mid-speed corners
-const ENGINE = 11500, BRAKE_F = 9000;            // N
-const RESIST = 42, DRAG = 1.35;                  // rolling + air drag (drag sets top speed)
+const ENGINE = 11500, BRAKE_F = 9000;            // N — ENGINE is the low-speed traction-limited force cap
+const POWER = 235000;                            // W — engine power: above ~20 m/s drive force = POWER/v, so accel tapers with speed (not linear)
+const ROLL = 560, RESIST = 42, DRAG = 0.45;      // ROLL: ~constant rolling drag (longitudinal); RESIST: lateral scrub; DRAG: air drag (sets top speed)
 const MAX_STEER = 0.52;                          // rad at low speed (more lock = tighter corners)
 const HALF_W = 9.5, KERB_W = 1.4;                // track half-width, kerb width (wider = more room for error)
 const G = 9.8;
@@ -131,6 +132,7 @@ const car = {
   fuel: 1,                                          // 1 = full tank
   ers: 0.7,                                         // 0..1 battery charge
   ersOn: false, drs: 0,                             // live state for the HUD
+  sgrip: 1, sres: 1, sdrv: 1,                        // smoothed surface grip / resistance / drive multipliers
 };
 let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
@@ -208,6 +210,7 @@ function resetCar() {
   const p = track.pts[0];
   car.x = p.x; car.y = p.y; car.a = Math.atan2(p.uy, p.ux);
   car.vx = car.vy = car.av = car.steer = 0;
+  car.throttle = car.brake = 0; car.sgrip = car.sres = car.sdrv = 1;
   car.tyre.wear = 0; car.tyre.temp = 80;        // fresh set of the current compound
   car.fuel = 1; car.ers = 0.7; car.ersOn = false; car.drs = 0;
   nearIdx = 0; lastS = 0;
@@ -223,15 +226,19 @@ function step(dt) {
   let vlong = cs * car.vx + sn * car.vy;
   let vlat = -sn * car.vx + cs * car.vy;
 
-  // surface affects available grip + resistance
+  // surface affects available grip + resistance; smoothed so crossing a boundary doesn't snap the handling
   const surf = querySurface(car.x, car.y);
-  let gripMul = 1, resMul = 1;
-  if (surf.surf === 'grass') { gripMul = 0.5; resMul = 4.5; }   // slows you, but you can still drive back on
-  else if (surf.surf === 'kerb') { gripMul = 0.85; resMul = 1.6; }
+  let gripT = 1, resT = 1, drvT = 1;
+  if (surf.surf === 'grass') { gripT = 0.62; resT = 4.5; drvT = 0.6; }   // slippery + draggy, and ease power so the rear doesn't instantly break loose -> still drivable back on
+  else if (surf.surf === 'kerb') { gripT = 0.85; resT = 1.6; }
+  car.sgrip += (gripT - car.sgrip) * Math.min(1, dt * 6);
+  car.sres  += (resT  - car.sres ) * Math.min(1, dt * 6);
+  car.sdrv  += (drvT  - car.sdrv ) * Math.min(1, dt * 6);
+  const gripMul = car.sgrip, resMul = car.sres, driveMul = car.sdrv;
 
   // --- Phase 1: tyre grip, fuel mass, ERS deploy, DRS ---
   const comp = COMPOUNDS[car.tyre.compound], tw = car.tyre;
-  const tempGrip = clamp(1 - ((tw.temp - comp.opt) / 60) ** 2, 0.55, 1);  // peak at optimal temp; cold/hot = less grip
+  const tempGrip = clamp(1 - ((tw.temp - comp.opt) / 80) ** 2, 0.70, 1);  // peak at optimal temp; cold/hot = less grip. Wide window + 0.70 floor: off-temp tyres lose grip but the car is ALWAYS drivable (coefficient never collapses)
   const tyreGrip = comp.grip * tempGrip * (1 - tw.wear * 0.30);           // worn tyres lose up to 30% grip
   const m = MASS + car.fuel * FUEL_MASS;                                  // heavier with fuel -> slower, more inertia
   const boosting = !!input.boost && car.ers > 0 && car.throttle > 0;
@@ -251,7 +258,9 @@ function step(dt) {
   const wF = m * G * (B / WHEELBASE), wR = m * G * (A / WHEELBASE);
   const sgn = Math.sign(vlong || 1);
   const fuelOut = car.fuel <= 0;
-  const drive = (fuelOut ? 0 : car.throttle * ENGINE) + (boosting ? ERS_BOOST : 0);   // engine + ERS -> rear axle
+  // power-limited traction: full force at low speed, force = POWER/v higher up -> accel tapers off (not linear)
+  const engineForce = fuelOut ? 0 : car.throttle * Math.min(ENGINE, POWER / Math.max(Math.abs(vlong), 6));
+  const drive = engineForce * driveMul + (boosting ? ERS_BOOST : 0);   // driveMul eases power on low-grip surfaces; ERS adds on top
   const brk = car.brake * BRAKE_F + (car.hand ? BRAKE_F * 0.9 : 0);
   // longitudinal weight transfer: accel -> rear, brake -> front
   const dW = clamp(((drive - brk * sgn) / m) * 0.03, -0.35, 0.35);
@@ -273,7 +282,8 @@ function step(dt) {
 
   const ftr = longF + longR;
   const dragF = DRAG * (drsOpen ? DRS_DRAG : 1);               // DRS cuts forward drag -> higher top speed
-  const fx = ftr - Math.sin(car.steer) * flatF - (RESIST * resMul) * vlong - dragF * vlong * Math.abs(vlong);
+  const roll = ROLL * resMul * (vlong / (Math.abs(vlong) + 4));   // ~constant rolling drag (rises on grass), gentle near standstill -> no sudden slowdown when lifting
+  const fx = ftr - Math.sin(car.steer) * flatF - roll - dragF * vlong * Math.abs(vlong);
   const fy = Math.cos(car.steer) * flatF + flatR - (RESIST * resMul) * vlat - DRAG * vlat * Math.abs(vlat);
   const torque = A * Math.cos(car.steer) * flatF - B * flatR;
 
@@ -307,7 +317,17 @@ function step(dt) {
     const vn = car.vx * lp.nx + car.vy * lp.ny;          // velocity into the wall
     if (vn * sg > 0) { car.vx -= vn * lp.nx; car.vy -= vn * lp.ny; }  // remove only outward part
     car.vx *= 0.82; car.vy *= 0.82; car.av *= 0.7;       // scrub speed but keep yaw so it can rotate
-    car.vx -= lp.nx * sg * 2.2; car.vy -= lp.ny * sg * 2.2;          // nudge back onto track -> never dead-stuck
+    car.vx -= lp.nx * sg * 2.2; car.vy -= lp.ny * sg * 2.2;          // nudge back onto track
+  }
+  // anti-pin recovery: if stranded on the grass at crawling speed (e.g. nose into the wall,
+  // throttle just grinding), swing the heading back toward the track and drift inward, so you
+  // can NEVER get dead-stuck. Gated to off-track + low speed, so on-track slow corners are untouched.
+  if (lim.surf === 'grass' && Math.hypot(car.vx, car.vy) < 7) {
+    const lp = lim.p, sg = lim.lat > 0 ? 1 : -1;
+    let da = Math.atan2(lp.uy, lp.ux) - car.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+    car.a += da * Math.min(1, dt * 2.5);                              // ease the nose back to the track direction
+    car.vx -= lp.nx * sg * 6 * dt; car.vy -= lp.ny * sg * 6 * dt;     // steady drift toward the track
+    car.av *= 0.5;
   }
 
   // skid / smoke when a tyre is sliding
@@ -320,7 +340,7 @@ function step(dt) {
   // --- Phase 1: tyre temp & wear, ERS charge, fuel burn (integrated at real-time rates) ---
   if (speed > 1.5) {
     const load = (Math.abs(flatF) + Math.abs(flatR)) / (m * G);          // ~lateral g through the tyres
-    const heat = 16 + load * 14 + slipMag * 90;                          // working temp from load, big spike when sliding
+    const heat = 30 + load * 12 + slipMag * 38;                          // working temp from load + sliding; tamed so tyres warm toward optimal instead of instantly pegging the 170° cap (baseline keeps tyres near their working range in normal running)
     const cool = (tw.temp - 25) * (0.32 + speed * 0.006);                // air cooling, stronger at speed
     tw.temp = clamp(tw.temp + (heat - cool) * dt, 25, 170);
     tw.wear = Math.min(1, tw.wear + comp.wear * (0.003 + slipMag * 0.02) * dt);
@@ -505,8 +525,9 @@ function drawWheel() {
     ctx.fillStyle = i < 4 ? '#46e0a0' : i < 7 ? '#ffd24a' : '#ff4d4d';
     ctx.beginPath(); ctx.arc(-R * 0.24 + i * R * 0.06, -R * 0.30, R * 0.022, 0, 7); ctx.fill();
   }
-  // top-centre stripe so the steering angle reads clearly
-  ctx.fillStyle = '#e23b41'; rrectP(-R * 0.045, -R * 1.04, R * 0.09, R * 0.16, 2); ctx.fill();
+  // top-centre marker drawn ON the rim (12 o'clock band, like a real F1 wheel) so the steering angle reads clearly
+  ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = R * 0.145; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, 0, R, Math.PI * 1.46, Math.PI * 1.54); ctx.stroke();
   ctx.restore();
 }
 function vignette() {
@@ -655,7 +676,12 @@ function loop(t) {
   let dt = (t - lastT) / 1000; lastT = t; perf = t;
   if (running && !paused) {
     dt = Math.min(dt, 0.033);
-    car.throttle = input.gas; car.brake = input.brake; car.hand = input.hand;
+    // ease throttle/brake toward input so lifting off is a smooth roll-off, not a step jolt
+    car.throttle += (input.gas - car.throttle) * Math.min(1, dt * 9);
+    if (Math.abs(input.gas - car.throttle) < 0.02) car.throttle = input.gas;
+    car.brake += (input.brake - car.brake) * Math.min(1, dt * 14);
+    if (Math.abs(input.brake - car.brake) < 0.02) car.brake = input.brake;
+    car.hand = input.hand;
     // sub-step physics for stability
     const sub = 2; for (let i = 0; i < sub; i++) { const r = step(dt / sub); if (i === sub - 1 && r.surf.surf === 'grass' && r.speed > 30) shake = 2.2; }
     lapNow = perf - lapStart;
