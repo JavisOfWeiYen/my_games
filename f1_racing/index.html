@@ -780,6 +780,25 @@ function updateAudio() {
 }
 
 // ===== 10. LOOP =====
+// car-to-car contact: treat each car as a disc; push overlapping pairs apart and trade a damped
+// impulse along the contact normal (a nudge, not a bounce). The AI then steers back to its line.
+const CAR_R = 1.8;
+function resolveCollisions() {
+  for (let a = 0; a < allCars.length; a++) {
+    for (let b = a + 1; b < allCars.length; b++) {
+      const A = allCars[a], B = allCars[b];
+      const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy), min = CAR_R * 2;
+      if (d >= min || d < 1e-4) continue;
+      const nx = dx / d, ny = dy / d, push = (min - d) * 0.5;
+      A.x -= nx * push; A.y -= ny * push; B.x += nx * push; B.y += ny * push;   // separate (equal mass)
+      const vn = (B.vx - A.vx) * nx + (B.vy - A.vy) * ny;                         // closing speed along normal
+      if (vn < 0) {                                                              // only respond if approaching
+        const j = -(1 + 0.15) * vn / 2;                                          // low restitution -> a thunk
+        A.vx -= j * nx; A.vy -= j * ny; B.vx += j * nx; B.vy += j * ny;
+      }
+    }
+  }
+}
 // advance one car's arc-position; bump its lap on crossing the line. The player also drives lap timing + best.
 function updateProgress(c, isPlayer) {
   const s = querySurface(c.x, c.y, c).s; c.s = s;
@@ -810,6 +829,7 @@ function loop(t) {
     for (let i = 0; i < sub; i++) { const r = step(car, input, dt / sub); if (i === sub - 1 && r.surf.surf === 'grass' && r.speed > 30) shake = 2.2; }
     // rivals: same physics, input from the AI driver
     for (const a of aiCars) { const ai = aiDriver(a); applyInput(a, ai, dt); for (let i = 0; i < sub; i++) step(a, ai, dt / sub); }
+    resolveCollisions();
     // lap timing + progress for every car
     lapNow = perf - lapStart;
     updateProgress(car, true);
