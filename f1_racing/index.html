@@ -145,13 +145,16 @@ function makeCar(opts = {}) {
     nearIdx: 0,                                        // this car's cached nearest-centreline index
     lap: 1, lastS: 0, s: 0,                            // race progress, per car (for lap count + standings)
     ai: !!opts.ai, name: opts.name || 'You', col: opts.col || '#ffd24a',
+    // AI driving style: gCorner = how near the grip limit it takes corners; brakeDiv = how late it brakes
+    // (bigger = later); look = steering lookahead factor; commit = throttle confidence near the corner speed.
+    skill: opts.skill || { gCorner: 3.6, brakeDiv: 19, look: 0.45, commit: 1.0 },
   };
 }
 const car = makeCar({ name: 'You', col: '#ffd24a' });   // the player (referenced by render/HUD/audio/camera)
 const aiCars = [
-  makeCar({ ai: true, name: 'RIVAL 1', col: '#5db8ff' }),
-  makeCar({ ai: true, name: 'RIVAL 2', col: '#ff6b9d' }),
-  makeCar({ ai: true, name: 'RIVAL 3', col: '#c39bff' }),
+  makeCar({ ai: true, name: 'RIVAL 1', col: '#5db8ff', skill: { gCorner: 4.15, brakeDiv: 24, look: 0.42, commit: 1.08 } }), // ace: fast, late braker
+  makeCar({ ai: true, name: 'RIVAL 2', col: '#ff6b9d', skill: { gCorner: 3.70, brakeDiv: 20, look: 0.46, commit: 1.00 } }), // midfield
+  makeCar({ ai: true, name: 'RIVAL 3', col: '#c39bff', skill: { gCorner: 3.40, brakeDiv: 17, look: 0.50, commit: 0.95 } }), // steady, cautious
 ];
 const allCars = [car, ...aiCars];
 let track = null;
@@ -426,24 +429,24 @@ function puffSmoke(fwdOff, n) {
 const aiOut = { gas: 0, brake: 0, left: 0, right: 0, hand: 0, boost: 0, drs: 0 };
 function aiDriver(c) {
   const o = aiOut; o.gas = o.brake = o.left = o.right = o.hand = o.boost = o.drs = 0;
-  const pts = track.pts, N = pts.length, i = c.nearIdx, speed = Math.hypot(c.vx, c.vy);
+  const pts = track.pts, N = pts.length, i = c.nearIdx, speed = Math.hypot(c.vx, c.vy), sk = c.skill;
   const spacing = track.total / N;
   // STEER: pure-pursuit a centreline point a short distance ahead (close enough to pull the car
   // back onto the line, not so close it weaves). Distance grows mildly with speed.
-  const lead = Math.max(1, Math.min(N >> 1, Math.round((11 + speed * 0.45) / spacing)));
+  const lead = Math.max(1, Math.min(N >> 1, Math.round((11 + speed * sk.look) / spacing)));
   const aim = pts[(i + lead) % N];
   let da = Math.atan2(aim.y - c.y, aim.x - c.x) - c.a; da = Math.atan2(Math.sin(da), Math.cos(da));
   if (da > 0.015) o.right = 1; else if (da < -0.015) o.left = 1;
   // SPEED: scan ahead only as far as it could actually brake from here (v^2/2a + margin), find the
   // tightest corner in that window, and brake to a speed it can hold. Looking only as far as needed
   // lets it carry speed on straights instead of lifting off hundreds of metres early.
-  const brakeDist = speed * speed / 18 + 10;
+  const brakeDist = speed * speed / sk.brakeDiv + 10;
   const scan = Math.max(3, Math.min(N >> 1, Math.round(brakeDist / spacing)));
   let maxCurv = 0;
   for (let k = 2; k <= scan; k++) { const cu = Math.abs(pts[(i + k) % N].curv); if (cu > maxCurv) maxCurv = cu; }
   const radius = maxCurv > 1e-4 ? 1 / maxCurv : 1e4;
-  let v = 30; for (let n = 0; n < 8; n++) { const g = 3.55 + v * v * 0.00018; v = Math.sqrt(g * 9.8 * radius); }  // near the grip limit + downforce
-  const target = Math.min(v, 80);
+  let v = 30; for (let n = 0; n < 8; n++) { const g = sk.gCorner + v * v * 0.00018; v = Math.sqrt(g * 9.8 * radius); }  // each driver takes corners nearer/further from the grip limit
+  const target = Math.min(v * sk.commit, 82);
   if (speed > target + 2) o.brake = 1;
   else if (speed < target - 1) o.gas = 1;
   if (o.gas && maxCurv < 0.02 && c.ers > 0.3) o.boost = 1;   // deploy ERS on the straights
