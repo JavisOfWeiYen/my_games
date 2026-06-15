@@ -58,8 +58,8 @@
     text-transform: none; line-height: 1.25; cursor: pointer; }
   #overlay .tchip small { display: block; color: #7d8db0; font-weight: 400; font-size: 11px; margin-top: 2px; }
   #overlay .tchip.on { border-color: #46e0a0; background: rgba(70,224,160,.14); color: #eaf0ff; }
-  #oppPick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
-  #oppPick .picklabel { color: #7d8db0; font-size: 12px; margin-right: 4px; letter-spacing: .04em; }
+  #oppPick, #diffPick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  #oppPick .picklabel, #diffPick .picklabel { color: #7d8db0; font-size: 12px; margin-right: 4px; letter-spacing: .04em; }
   #overlay .nchip { border: 1px solid rgba(120,135,165,.4); border-radius: 8px; background: rgba(20,26,40,.6);
     color: #cdd6ea; width: 30px; height: 30px; font-family: inherit; font-size: 13px; font-weight: 700;
     letter-spacing: 0; text-transform: none; cursor: pointer; padding: 0; }
@@ -98,6 +98,7 @@
     <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · <b>Shift ERS</b> · <b>F DRS</b> · <b>T tyres 換胎</b> · R reset · P pause<br>📱 on-screen buttons (incl. ERS / DRS / 胎)</p>
     <div id="trackPick"></div>
     <div id="oppPick"></div>
+    <div id="diffPick"></div>
     <button id="ovBtn">▶ Drive 開始</button>
     <a href="the-science.html" style="color:#9fb0cf;font-size:13px;margin-top:2px;text-decoration:none;border-bottom:1px dotted rgba(159,176,207,.5)">📖 賽車背後的物理與過彎技巧</a>
   </div>
@@ -142,6 +143,7 @@ const DRS_DRAG = 0.55;                           // drag multiplier when DRS is 
 // ===== 2. STATE =====
 // One factory builds every car (player and AI alike) — the physics in step() treats them identically.
 function makeCar(opts = {}) {
+  const sk = opts.skill || { gCorner: 3.6, brakeDiv: 19, look: 0.45, commit: 1.0 };
   return {
     x: 0, y: 0, a: 0, vx: 0, vy: 0, av: 0, steer: 0, throttle: 0, brake: 0, hand: 0,
     tyre: { compound: opts.compound || 'medium', wear: 0, temp: 80 },  // wear 0..1, temp °C
@@ -156,7 +158,8 @@ function makeCar(opts = {}) {
     livery: opts.livery || { base: opts.col || '#ffd24a', accent: '#15171c', wing: opts.col || '#ffd24a' },
     // AI driving style: gCorner = how near the grip limit it takes corners; brakeDiv = how late it brakes
     // (bigger = later); look = steering lookahead factor; commit = throttle confidence near the corner speed.
-    skill: opts.skill || { gCorner: 3.6, brakeDiv: 19, look: 0.45, commit: 1.0 },
+    // `skill` is the live profile (set from baseSkill by difficulty); baseSkill is the Easy baseline.
+    skill: { ...sk }, baseSkill: { ...sk },
   };
 }
 const car = makeCar({ name: 'You', col: '#ffd24a' });   // the player (referenced by render/HUD/audio/camera)
@@ -194,6 +197,19 @@ function setRivals(n) {
   allCars = [car, ...aiCars];
   try { localStorage.setItem('apexgp-rivals', numRivals); } catch (e) {}
 }
+// difficulty tweaks every rival's live skill from its Easy baseline. Hard = aggressive: brakes much
+// later, carries more speed and runs nearer (sometimes past) the grip limit — fastest-lap focused,
+// NOT guaranteed to stay on track.
+let difficulty = localStorage.getItem('apexgp-diff') || 'easy';
+function applyDifficulty() {
+  for (const c of ALL_RIVALS) {
+    const b = c.baseSkill;
+    c.skill = (difficulty === 'hard')
+      ? { gCorner: b.gCorner + 0.45, brakeDiv: b.brakeDiv + 5, look: b.look, commit: b.commit + 0.08 }
+      : { ...b };
+  }
+}
+function setDifficulty(d) { difficulty = (d === 'hard') ? 'hard' : 'easy'; applyDifficulty(); try { localStorage.setItem('apexgp-diff', difficulty); } catch (e) {} }
 let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
@@ -1044,6 +1060,16 @@ oppPick.addEventListener('click', e => {
   const btn = e.target.closest('.nchip'); if (!btn) return;
   setRivals(+btn.dataset.n); gridCars(); renderOppPicker();   // re-grid so the preview + minimap update live
 });
+const diffPick = $('#diffPick');
+function renderDiffPicker() {
+  diffPick.innerHTML = '<span class="picklabel">難度 LEVEL</span>' +
+    [['easy', '容易 Easy'], ['hard', '困難 Hard']].map(([d, label]) =>
+      `<button class="tchip${d === difficulty ? ' on' : ''}" data-d="${d}">${label}</button>`).join('');
+}
+diffPick.addEventListener('click', e => {
+  const btn = e.target.closest('.tchip'); if (!btn) return;
+  setDifficulty(btn.dataset.d); renderDiffPicker();
+});
 // grid the field and arm the 3-second start lights; the loop holds the cars until the lights go out
 function beginRace() {
   gridCars(); camYaw = car.a;
@@ -1089,7 +1115,7 @@ hold('#bErs', 'boost'); hold('#bDrs', 'drs');
 $('#bTyre').addEventListener('click', cycleTyre);
 
 // ===== start =====
-loadTrack(trackIndex); renderTrackPicker(); renderOppPicker(); resize(); requestAnimationFrame(loop);
+applyDifficulty(); loadTrack(trackIndex); renderTrackPicker(); renderOppPicker(); renderDiffPicker(); resize(); requestAnimationFrame(loop);
 </script>
 </body>
 </html>
