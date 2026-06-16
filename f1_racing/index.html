@@ -64,6 +64,9 @@
     color: #cdd6ea; width: 30px; height: 30px; font-family: inherit; font-size: 13px; font-weight: 700;
     letter-spacing: 0; text-transform: none; cursor: pointer; padding: 0; }
   #overlay .nchip.on { border-color: #46e0a0; background: rgba(70,224,160,.16); color: #eaf0ff; }
+  #overlay .links { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  #overlay .links a { color: #9fb0cf; font-size: 13px; text-decoration: none; border-bottom: 1px dotted rgba(159,176,207,.5); }
+  #overlay .links a:hover { color: #eaf0ff; border-bottom-color: #eaf0ff; }
 </style>
 </head>
 <body>
@@ -72,6 +75,7 @@
 
   <div id="bar">
     <button id="bReset">↺ Reset 回起點</button>
+    <button id="bTelem">📊 數據 Export</button>
     <button id="bPause">⏸ Pause</button>
   </div>
 
@@ -100,7 +104,10 @@
     <div id="oppPick"></div>
     <div id="diffPick"></div>
     <button id="ovBtn">▶ Drive 開始</button>
-    <a href="the-science.html" style="color:#9fb0cf;font-size:13px;margin-top:2px;text-decoration:none;border-bottom:1px dotted rgba(159,176,207,.5)">📖 賽車背後的物理與過彎技巧</a>
+    <div class="links">
+      <a href="the-science.html">📖 賽車的科學 The Science</a>
+      <a href="the-making-of.html">🛠️ 開發歷程 The Making Of</a>
+    </div>
   </div>
 </div>
 
@@ -201,6 +208,10 @@ function setRivals(n) {
 // later, carries more speed and runs nearer (sometimes past) the grip limit — fastest-lap focused,
 // NOT guaranteed to stay on track.
 let difficulty = localStorage.getItem('apexgp-diff') || 'easy';
+// AI cornering aggression: the speed² (downforce/track-width) grip term in the AI's corner-speed
+// model. Higher = the AI carries more speed through fast corners and slides more — which is FASTER
+// overall in this forgiving physics (off-track costs little), so we tune for lap time, not tidiness.
+let AI_DF = 0.0036;
 function applyDifficulty() {
   for (const c of ALL_RIVALS) {
     const b = c.baseSkill;
@@ -214,6 +225,9 @@ let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
 let countdown = 0, finished = false, standings = null, goFlash = 0;   // race start lights + finish standings
+// telemetry: per-frame trace of the player's drive (position, speed, inputs) so a real
+// human lap can be recorded, exported and analysed — then used to teach the AI.
+let telemetry = [], recording = true;
 let W = 0, H = 0, dpr = 1, zoom = 8.0, camX = 0, camY = 0, camA = 0, shake = 0;
 const marks = [];            // skid marks (world coords), capped
 const smoke = [];            // tyre-smoke particles, capped
@@ -271,6 +285,45 @@ function buildTrack(def) {
   let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
   for (const p of pts) { minx = Math.min(minx, p.x); miny = Math.min(miny, p.y); maxx = Math.max(maxx, p.x); maxy = Math.max(maxy, p.y); }
   track = { def, name: def.name, laps: def.laps, pts, total, minx, miny, maxx, maxy };
+  track.scenery = buildScenery(pts, N);
+}
+
+// Roadside scenery, generated once per track and stored as world-space billboards:
+// loose treelines down both verges, the odd advertising hoarding by the kerb, and
+// grandstands packed with a speckled crowd around the start/finish. Turns the bare
+// grassland into something with depth and a sense of place.
+const TREE_COL  = ['#2f6b34', '#377a3c', '#295c2f', '#41864a', '#33713a'];
+const BOARD_COL = ['#d83b3b', '#2e72d8', '#1faf6a', '#e8a92b', '#7a4fd0', '#e8612b'];
+function buildScenery(pts, N) {
+  const props = [];
+  for (let i = 0; i < N; i += 2) {
+    const p = pts[i];
+    // trees: scattered on the grass either side, set back a random distance so the
+    // verge reads as a receding treeline rather than a hard wall.
+    for (const side of [-1, 1]) {
+      if (Math.random() < 0.40) {
+        const off = HALF_W + 4 + Math.random() * 46;
+        props.push({ t: 'tree', x: p.x + p.nx * side * off, y: p.y + p.ny * side * off,
+          h: 4.5 + Math.random() * 7, r: 1.6 + Math.random() * 1.9,
+          col: TREE_COL[(Math.random() * TREE_COL.length) | 0] });
+      }
+    }
+    // advertising hoardings right by the verge, alternating sides
+    if (i % 22 === 0) {
+      const side = (i % 44 === 0) ? -1 : 1;
+      props.push({ t: 'board', x: p.x + p.nx * side * (HALF_W + 2.6), y: p.y + p.ny * side * (HALF_W + 2.6),
+        col: BOARD_COL[((i / 22) | 0) % BOARD_COL.length] });
+    }
+  }
+  // grandstands flanking the pit straight (start/finish, around index 0)
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 4; k++) {
+      const idx = (3 + k * 5) % N, p = pts[idx];
+      props.push({ t: 'stand', x: p.x + p.nx * side * (HALF_W + 7), y: p.y + p.ny * side * (HALF_W + 7),
+        w: 16, h: 7, seed: (idx * 2654435761 + (side > 0 ? 17 : 91)) >>> 0 });
+    }
+  }
+  return props;
 }
 
 // ===== 4. SURFACE (nearest centreline point -> lateral offset + arc-pos) =====
@@ -490,20 +543,45 @@ function aiDriver(c) {
   const lead = Math.max(1, Math.min(N >> 1, Math.round((11 + speed * sk.look) / spacing)));
   const aim = pts[(i + lead) % N];
   let da = Math.atan2(aim.y - c.y, aim.x - c.x) - c.a; da = Math.atan2(Math.sin(da), Math.cos(da));
-  if (da > 0.015) o.right = 1; else if (da < -0.015) o.left = 1;
-  // SPEED: scan ahead only as far as it could actually brake from here (v^2/2a + margin), find the
-  // tightest corner in that window, and brake to a speed it can hold. Looking only as far as needed
-  // lets it carry speed on straights instead of lifting off hundreds of metres early.
-  const brakeDist = speed * speed / sk.brakeDiv + 10;
-  const scan = Math.max(3, Math.min(N >> 1, Math.round(brakeDist / spacing)));
-  let maxCurv = 0;
-  for (let k = 2; k <= scan; k++) { const cu = Math.abs(pts[(i + k) % N].curv); if (cu > maxCurv) maxCurv = cu; }
+  // wider deadband near the line so the car stops twitching the wheel on straights:
+  // constant full-lock micro-corrections used to spike car.steer past the DRS gate and
+  // snap the wing shut every tick, robbing the AI of its low-drag top speed.
+  if (da > 0.03) o.right = 1; else if (da < -0.03) o.left = 1;
+  // SPEED: scan generously ahead, find the tightest corner AND how far away it is, then drive
+  // like a human — stay flat out down the straight and only hit the brakes at the last
+  // responsible moment (when the corner finally falls inside the real braking distance),
+  // instead of lifting off ~tens of metres early and coasting in.
+  const lookDist = speed * speed / sk.brakeDiv + 40;
+  const scan = Math.max(3, Math.min(N >> 1, Math.round(lookDist / spacing)));
+  let maxCurv = 0, kAt = scan;
+  for (let k = 2; k <= scan; k++) { const cu = Math.abs(pts[(i + k) % N].curv); if (cu > maxCurv) { maxCurv = cu; kAt = k; } }
   const radius = maxCurv > 1e-4 ? 1 / maxCurv : 1e4;
-  let v = 30; for (let n = 0; n < 8; n++) { const g = sk.gCorner + v * v * 0.00018; v = Math.sqrt(g * 9.8 * radius); }  // each driver takes corners nearer/further from the grip limit
-  const target = Math.min(v * sk.commit, 82);
-  if (speed > target + 2) o.brake = 1;
-  else if (speed < target - 1) o.gas = 1;
-  if (o.gas && maxCurv < 0.02 && c.ers > 0.3) o.boost = 1;   // deploy ERS on the straights
+  // Recorded human laps show the car holds FAR more speed through FAST/sweeping corners than the
+  // old model assumed (player: ~92% full throttle, no braking, 200+ km/h through fast corners) —
+  // but tight hairpins are still genuinely slow. So lift the speed-dependent (downforce) grip term
+  // rather than a flat multiplier: fast corners gain a lot, slow hairpins barely change (which keeps
+  // the AI from carrying too much into a hairpin and sliding off).
+  let v = 30; for (let n = 0; n < 8; n++) { const g = sk.gCorner + v * v * AI_DF; v = Math.sqrt(g * 9.8 * radius); }  // each driver takes corners nearer/further from the grip limit
+  const straight = maxCurv < 0.02;
+  const cornerV = Math.min(v * sk.commit, 120);          // speed it wants to carry through that corner
+  const dCorner = kAt * spacing;                         // distance to the tightest point ahead
+  // physics braking distance from here down to the corner speed; a smaller safety margin for
+  // braver drivers (higher brakeDiv) so they brake later and reach a higher straight-line peak.
+  const DECEL = 11;                                      // ~grip-limited deceleration (m/s^2)
+  const margin = 1 + 14 / sk.brakeDiv;                   // ~1.6 (cautious) .. ~1.5 (brave)
+  const needBrake = Math.max(0, (speed * speed - cornerV * cornerV) / (2 * DECEL)) * margin;
+  const atBrakingPoint = speed > cornerV + 1 && dCorner <= needBrake;
+  // KEY: stay HARD on the throttle until the braking point, then brake hard — like a human.
+  // The old code lifted off and coasted the instant speed exceeded the upcoming corner's
+  // speed (even with the corner hundreds of metres away), bleeding speed for free. Now it
+  // accelerates flat-out right up to the braking zone, so it reaches its true straight-line peak.
+  if (atBrakingPoint) o.brake = 1;                                 // last responsible moment -> brake
+  else if (speed < 120 && dCorner > needBrake) o.gas = 1;          // room left before the corner -> flat out
+  else if (speed < cornerV - 1) o.gas = 1;                         // through the corner -> hold corner speed
+  // STRAIGHT-LINE PACE: open DRS (low drag) and deploy ERS whenever flat out — including the
+  // drive out of a corner. step() auto-closes DRS under braking/steering, so this is safe.
+  if (o.gas && o.brake === 0 && speed > 25) o.drs = 1;
+  if (o.gas && c.ers > 0.05) o.boost = 1;
   return o;
 }
 
@@ -553,10 +631,12 @@ function render() {
   const hz = H * HORIZON;
   let sky = ctx.createLinearGradient(0, 0, 0, hz);
   sky.addColorStop(0, '#16203a'); sky.addColorStop(1, '#46597c'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+  drawHills(hz);
   let gr = ctx.createLinearGradient(0, hz, 0, H);
   gr.addColorStop(0, '#33532e'); gr.addColorStop(1, '#22401c'); ctx.fillStyle = gr; ctx.fillRect(0, hz, W, H - hz);
   setupProjection();
   drawRoad();
+  drawScenery();
   drawMarksP();
   drawCars();
   drawSmokeP();
@@ -676,6 +756,81 @@ function drawMarksP() {
 function drawSmokeP() {
   for (const sm of smoke) { const p = project(sm.x, sm.y); if (!p) continue; ctx.globalAlpha = sm.life * 0.4; ctx.fillStyle = '#dde2ec'; const r = Math.min(70, p.sc * sm.sz); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1;
+}
+// layered distant mountains on the horizon. They slide as the car's heading changes
+// (parallax keyed to camYaw), giving the world a sense of rotation beyond the track.
+function drawHills(hz) {
+  const layers = [
+    { col: '#2c4456', h: hz * 0.26, f: 0.0055, sp: 70,  ph: 0.0 },
+    { col: '#395a6e', h: hz * 0.16, f: 0.0105, sp: 130, ph: 2.1 },
+  ];
+  for (const L of layers) {
+    const shift = camYaw * L.sp;
+    ctx.fillStyle = L.col; ctx.beginPath(); ctx.moveTo(0, hz + 1);
+    for (let x = 0; x <= W; x += 12) {
+      const n = Math.sin((x + shift) * L.f) * 0.6 + Math.sin((x + shift) * L.f * 2.3 + L.ph) * 0.4;
+      ctx.lineTo(x, hz - (0.45 + 0.55 * (n * 0.5 + 0.5)) * L.h);
+    }
+    ctx.lineTo(W, hz + 1); ctx.closePath(); ctx.fill();
+  }
+}
+// roadside scenery (trees / hoardings / grandstands) as ground-anchored billboards,
+// projected and scaled by distance, drawn far -> near so nearer props overlap.
+function drawScenery() {
+  if (!track.scenery) return;
+  const list = [];
+  for (const o of track.scenery) { const p = project(o.x, o.y); if (p && p.fwd < 360) list.push({ o, p }); }
+  list.sort((a, b) => b.p.fwd - a.p.fwd);
+  for (const { o, p } of list) {
+    if (o.t === 'tree') drawTree(o, p);
+    else if (o.t === 'board') drawBoard(o, p);
+    else drawStand(o, p);
+  }
+}
+function drawTree(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, h = o.h * sc;
+  if (h < 2 || x < -80 || x > W + 80) return;
+  const cr = o.r * sc, trunkH = h * 0.34, trunkW = Math.max(1, o.r * 0.16 * sc), cy = gy - h + cr * 0.9;
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x, gy, cr * 0.9, Math.max(1, cr * 0.22), 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#5b3f29'; ctx.fillRect(x - trunkW / 2, gy - trunkH, trunkW, trunkH);
+  ctx.fillStyle = o.col;
+  ctx.beginPath(); ctx.arc(x, cy, cr, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(x - cr * 0.62, cy + cr * 0.32, cr * 0.74, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + cr * 0.62, cy + cr * 0.32, cr * 0.74, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.beginPath(); ctx.arc(x - cr * 0.34, cy - cr * 0.36, cr * 0.46, 0, 7); ctx.fill();
+}
+function drawBoard(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, w = 6 * sc, h = 3 * sc, legH = 2.2 * sc;
+  if (h < 3 || x < -100 || x > W + 100) return;
+  const lw = Math.max(1, 0.25 * sc), py = gy - legH - h;
+  ctx.fillStyle = '#3a3f48'; ctx.fillRect(x - w * 0.4, gy - legH, lw, legH); ctx.fillRect(x + w * 0.4 - lw, gy - legH, lw, legH);
+  ctx.fillStyle = o.col; rrectP(x - w / 2, py, w, h, Math.min(4, w * 0.06)); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = Math.max(1, sc * 0.08); rrectP(x - w / 2, py, w, h, Math.min(4, w * 0.06)); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.fillRect(x - w * 0.36, py + h * 0.30, w * 0.72, h * 0.17);
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(x - w * 0.30, py + h * 0.58, w * 0.52, h * 0.11);
+}
+function drawStand(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, w = o.w * sc, h = o.h * sc;
+  if (h < 4 || x < -w || x > W + w) return;
+  const x0 = x - w / 2, top = gy - h;
+  let sd = o.seed >>> 0; const rnd = () => ((sd = (sd * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  // sloped terrace
+  ctx.fillStyle = '#8b93a2'; ctx.beginPath();
+  ctx.moveTo(x0, gy); ctx.lineTo(x0 + w, gy); ctx.lineTo(x0 + w, top + h * 0.55); ctx.lineTo(x0, top + h * 0.25); ctx.closePath(); ctx.fill();
+  // speckled crowd
+  const CROWD = ['#e8e2d6', '#d83b3b', '#2e72d8', '#1faf6a', '#e8a92b', '#cccfd6'];
+  const cols = Math.max(4, (w / 3) | 0), rows = Math.max(3, (h / 3) | 0);
+  for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) {
+    if (rnd() < 0.55) continue;
+    const u = cc / cols, frontY = top + h * 0.25 + (h * 0.30) * u;     // follow the terrace slope
+    const px = x0 + u * w + rnd() * (w / cols) * 0.6;
+    const pyd = frontY + (gy - frontY) * (r / rows);
+    ctx.fillStyle = CROWD[(rnd() * CROWD.length) | 0];
+    ctx.fillRect(px, pyd, Math.max(1, sc * 0.22), Math.max(1, sc * 0.28));
+  }
+  // roof canopy + shaded lip
+  ctx.fillStyle = '#dde3ed'; ctx.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
+  ctx.fillStyle = 'rgba(0,0,0,.20)'; ctx.fillRect(x0 - w * 0.04, top + h * 0.16, w * 1.08, Math.max(1, h * 0.035));
 }
 // rival cars as ground-anchored billboards: project each to its tyre-contact point and scale by
 // distance (project's `sc` = pixels-per-metre there). Drawn far -> near so nearer cars overlap.
@@ -977,6 +1132,32 @@ function racePosition() {
   let ahead = 0; for (const a of aiCars) if (prog(a) > mine) ahead++;
   return ahead + 1;
 }
+// append one telemetry sample for the player this frame (position, speed, inputs,
+// and the track-position `s` so laps can be aligned and compared apples-to-apples)
+function recordTelemetry(dt) {
+  if (!recording || telemetry.length > 60000) return;
+  const v = Math.hypot(car.vx, car.vy);
+  telemetry.push({
+    t: +lapNow.toFixed(0),                 // ms since the lights went out
+    lap: car.lap, s: +car.s.toFixed(1),    // arc-position along the centreline (m)
+    v: +(v * 3.6).toFixed(1),              // km/h
+    thr: +car.throttle.toFixed(2), brk: +car.brake.toFixed(2),
+    drs: car.drs, ers: +car.ers.toFixed(2), boost: car.ersOn ? 1 : 0,
+    steer: +car.steer.toFixed(3),
+    x: +car.x.toFixed(1), y: +car.y.toFixed(1),
+  });
+}
+// download the recorded trace as JSON (drop the file in the f1_racing/ folder for analysis)
+function exportTelemetry() {
+  const data = { track: track.name, trackIndex, total: +track.total.toFixed(1),
+    laps: track.laps, difficulty, samples: telemetry };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'apex-telemetry-' + track.name.toLowerCase().replace(/\s+/g, '-') + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  console.log('[telemetry] exported ' + telemetry.length + ' samples for ' + track.name);
+}
 function loop(t) {
   requestAnimationFrame(loop);
   if (!lastT) lastT = t;
@@ -998,6 +1179,7 @@ function loop(t) {
       lapNow = perf - lapStart;
       updateProgress(car, true);
       for (const a of aiCars) updateProgress(a, false);
+      recordTelemetry(dt);
     }
   }
   if (goFlash > 0) goFlash = Math.max(0, goFlash - dt);
@@ -1078,6 +1260,7 @@ function beginRace() {
   gridCars(); camYaw = car.a;
   lap = 0; lapStart = perf; lapNow = 0; lastS = 0;   // lap 0 = on the grid; first line crossing -> lap 1
   countdown = 3.2; finished = false; standings = null;
+  telemetry = [];                                    // fresh trace each race
 }
 function startGame() {
   beginRace();
@@ -1092,6 +1275,7 @@ function togglePause() {
 $('#ovBtn').addEventListener('click', () => { if (paused) togglePause(); else startGame(); });
 $('#bReset').addEventListener('click', resetToStart);
 $('#bPause').addEventListener('click', togglePause);
+$('#bTelem').addEventListener('click', exportTelemetry);
 
 function cycleTyre() {
   const i = COMPOUND_ORDER.indexOf(car.tyre.compound);
@@ -1103,6 +1287,7 @@ addEventListener('keydown', e => {
   if (e.key === 'p' || e.key === 'P') { togglePause(); e.preventDefault(); return; }
   if (e.key === 'r' || e.key === 'R') { resetToStart(); e.preventDefault(); return; }
   if (e.key === 't' || e.key === 'T') { cycleTyre(); e.preventDefault(); return; }
+  if (e.key === 'g' || e.key === 'G') { exportTelemetry(); e.preventDefault(); return; }
   if (e.key === 'Enter' && !started) { startGame(); return; }
   const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
 });
