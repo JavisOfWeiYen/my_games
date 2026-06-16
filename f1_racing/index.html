@@ -124,6 +124,12 @@
 const $ = s => document.querySelector(s);
 const view = $('#view'), ctx = view.getContext('2d');
 
+// sponsor logo, drawn as a decal on the cockpit dash (left of the instrument binnacle)
+const logoImg = new Image(); let logoReady = false;
+logoImg.onload = () => { logoReady = true; };
+logoImg.src = 'Nankang.png';
+let lastDash = null;                 // binnacle rect stashed by drawDash so drawLogo can sit beside it
+
 // ===== 1. CONFIG (physics in SI-ish units; track in metres) =====
 const MASS = 780, INERTIA = 1500;                // higher inertia = steadier, less snap-spin
 const A = 1.25, B = 1.55, WHEELBASE = A + B;     // CG-to-front, CG-to-rear
@@ -211,7 +217,7 @@ let difficulty = localStorage.getItem('apexgp-diff') || 'easy';
 // AI cornering aggression: the speed² (downforce/track-width) grip term in the AI's corner-speed
 // model. Higher = the AI carries more speed through fast corners and slides more — which is FASTER
 // overall in this forgiving physics (off-track costs little), so we tune for lap time, not tidiness.
-let AI_DF = 0.0036;
+let AI_DF = 0.0026;
 function applyDifficulty() {
   for (const c of ALL_RIVALS) {
     const b = c.baseSkill;
@@ -286,6 +292,10 @@ function buildTrack(def) {
   for (const p of pts) { minx = Math.min(minx, p.x); miny = Math.min(miny, p.y); maxx = Math.max(maxx, p.x); maxy = Math.max(maxy, p.y); }
   track = { def, name: def.name, laps: def.laps, pts, total, minx, miny, maxx, maxy };
   track.scenery = buildScenery(pts, N);
+  // bucket collidable props by segment so each car only tests the few props beside it
+  const bk = Array.from({ length: N }, () => []);
+  for (const o of track.scenery) if (o.cc) bk[o.seg].push(o);
+  track.sceneryBuckets = bk;
 }
 
 // Roadside scenery, generated once per track and stored as world-space billboards:
@@ -294,33 +304,42 @@ function buildTrack(def) {
 // grassland into something with depth and a sense of place.
 const TREE_COL  = ['#2f6b34', '#377a3c', '#295c2f', '#41864a', '#33713a'];
 const BOARD_COL = ['#d83b3b', '#2e72d8', '#1faf6a', '#e8a92b', '#7a4fd0', '#e8612b'];
+// each prop carries its own collision: `cc` = world-space collision circles, plus a flag —
+// solid props (trees, stands) are hard walls that scrub speed; `breakable` props (hoardings)
+// get knocked down on contact. `seg` buckets the prop by segment for cheap broad-phase.
 function buildScenery(pts, N) {
   const props = [];
   for (let i = 0; i < N; i += 2) {
     const p = pts[i];
     // trees: scattered on the grass either side, set back a random distance so the
-    // verge reads as a receding treeline rather than a hard wall.
+    // verge reads as a receding treeline rather than a hard wall. Kept >=5m off the edge
+    // so the trunk's collision circle never clips a car using the kerb on a clean line.
     for (const side of [-1, 1]) {
       if (Math.random() < 0.40) {
-        const off = HALF_W + 4 + Math.random() * 46;
-        props.push({ t: 'tree', x: p.x + p.nx * side * off, y: p.y + p.ny * side * off,
+        const off = HALF_W + 5 + Math.random() * 45;
+        const x = p.x + p.nx * side * off, y = p.y + p.ny * side * off;
+        props.push({ t: 'tree', x, y, seg: i, solid: true, cc: [{ x, y, r: 1.15 }],
           h: 4.5 + Math.random() * 7, r: 1.6 + Math.random() * 1.9,
           col: TREE_COL[(Math.random() * TREE_COL.length) | 0] });
       }
     }
-    // advertising hoardings right by the verge, alternating sides
+    // advertising hoardings right by the verge, alternating sides — breakable
     if (i % 22 === 0) {
       const side = (i % 44 === 0) ? -1 : 1;
-      props.push({ t: 'board', x: p.x + p.nx * side * (HALF_W + 2.6), y: p.y + p.ny * side * (HALF_W + 2.6),
+      const x = p.x + p.nx * side * (HALF_W + 2.6), y = p.y + p.ny * side * (HALF_W + 2.6);
+      props.push({ t: 'board', x, y, seg: i, breakable: true, down: false, cc: [{ x, y, r: 2.4 }],
         col: BOARD_COL[((i / 22) | 0) % BOARD_COL.length] });
     }
   }
-  // grandstands flanking the pit straight (start/finish, around index 0)
+  // grandstands flanking the pit straight (start/finish, around index 0) — solid wall,
+  // approximated by three collision circles laid along the track tangent.
   for (const side of [-1, 1]) {
     for (let k = 0; k < 4; k++) {
-      const idx = (3 + k * 5) % N, p = pts[idx];
-      props.push({ t: 'stand', x: p.x + p.nx * side * (HALF_W + 7), y: p.y + p.ny * side * (HALF_W + 7),
-        w: 16, h: 7, seed: (idx * 2654435761 + (side > 0 ? 17 : 91)) >>> 0 });
+      const idx = (3 + k * 5) % N, p = pts[idx], w = 16;
+      const x = p.x + p.nx * side * (HALF_W + 7), y = p.y + p.ny * side * (HALF_W + 7);
+      const cc = [-0.33, 0, 0.33].map(f => ({ x: x + p.ux * w * f, y: y + p.uy * w * f, r: w * 0.22 }));
+      props.push({ t: 'stand', x, y, seg: idx, solid: true, cc,
+        w, h: 7, seed: (idx * 2654435761 + (side > 0 ? 17 : 91)) >>> 0 });
     }
   }
   return props;
@@ -779,7 +798,7 @@ function drawHills(hz) {
 function drawScenery() {
   if (!track.scenery) return;
   const list = [];
-  for (const o of track.scenery) { const p = project(o.x, o.y); if (p && p.fwd < 360) list.push({ o, p }); }
+  for (const o of track.scenery) { if (o.down) continue; const p = project(o.x, o.y); if (p && p.fwd < 360) list.push({ o, p }); }
   list.sort((a, b) => b.p.fwd - a.p.fwd);
   for (const { o, p } of list) {
     if (o.t === 'tree') drawTree(o, p);
@@ -937,6 +956,7 @@ function drawDash() {
   const hi = W - 250;                       // right edge of the free zone (clear of the touch buttons)
   if (cxp + pw / 2 > hi) { pw = Math.max(190, Math.min(pw, hi - 175 - 8)); cxp = (175 + hi) / 2; }  // narrow + recentre on small screens
   const x0 = cxp - pw / 2, y0 = H - ph - 6;
+  lastDash = { x0, y0, pw, ph };
   ctx.fillStyle = 'rgba(9,12,19,.85)'; rrectP(x0, y0, pw, ph, 16); ctx.fill();
   ctx.strokeStyle = 'rgba(140,160,200,.12)'; ctx.lineWidth = 1.5; rrectP(x0 + 0.8, y0 + 0.8, pw - 1.6, ph - 1.6, 15); ctx.stroke();
   // RPM tach — segmented bar, green -> amber -> red, flashing past the redline
@@ -1004,7 +1024,21 @@ function drawHud() {
   ctx.fillStyle = '#5a6a88'; ctx.font = '600 11px system-ui, sans-serif'; ctx.fillText('🏁 ' + (track.name || ''), 16, 88);
   drawTelemetry();
   drawDash();
+  drawLogo();
   drawMinimap();
+}
+// sponsor decal on the dark cockpit, just left of the instrument binnacle. Sized to the gap
+// between the binnacle and the bottom-left steering buttons, so it scales down on narrow
+// phones and shows large on a notebook; hidden entirely if there's genuinely no room.
+function drawLogo() {
+  if (!logoReady || !lastDash) return;
+  const { x0, y0, ph } = lastDash;
+  const rightX = x0 - 14;                       // sit just left of the binnacle
+  const avail = rightX - 186;                   // 186 ≈ right edge of the bottom-left ◀▶ buttons
+  if (avail < 64) return;                        // no usable room (very narrow screens) -> skip cleanly
+  const w = Math.min(avail, 184 * (H / 600)), h = w * (236 / 1004);
+  const x = rightX - w, y = y0 + (ph - h) / 2;
+  ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(logoImg, x, y, w, h); ctx.restore();
 }
 function drawMinimap() {
   const pad = 14, size = 132, x0 = W - size - pad, y0 = pad;
@@ -1108,6 +1142,34 @@ function resolveCollisions() {
     }
   }
 }
+// car vs roadside scenery. Solid props (trees, stands) act as hard walls — push the car out,
+// cancel the into-prop velocity and scrub speed (same response as the track-limit barrier), so a
+// nose-in hit slides off instead of dead-stopping. Breakable props (hoardings) get knocked flat
+// and barely slow the car. Only props in the few segments beside the car are tested (broad-phase).
+function respawnScenery() { if (track && track.scenery) for (const o of track.scenery) if (o.down) o.down = false; }
+function sceneryCollide(c) {
+  const bk = track.sceneryBuckets; if (!bk) return;
+  const N = bk.length;
+  for (let w = -3; w <= 3; w++) {
+    const list = bk[((c.nearIdx + w) % N + N) % N];
+    for (const o of list) {
+      if (o.down) continue;
+      for (const cc of o.cc) {
+        const dx = c.x - cc.x, dy = c.y - cc.y, min = cc.r + CAR_R, d = Math.hypot(dx, dy);
+        if (d >= min || d < 1e-4) continue;
+        const nx = dx / d, ny = dy / d;
+        if (o.breakable) {                                   // knock it flat; minor speed loss, no block
+          o.down = true; c.vx *= 0.9; c.vy *= 0.9; c.av += (nx * c.vy - ny * c.vx) * 0.02;
+          continue;
+        }
+        c.x = cc.x + nx * min; c.y = cc.y + ny * min;        // push out of the prop
+        const vn = c.vx * nx + c.vy * ny;                    // velocity into the prop (outward positive)
+        if (vn < 0) { c.vx -= vn * nx; c.vy -= vn * ny; }    // remove only the inward part -> slide off
+        c.vx *= 0.78; c.vy *= 0.78; c.av *= 0.6;             // scrub speed, keep some yaw
+      }
+    }
+  }
+}
 // advance one car's arc-position; bump its lap on crossing the line. The player also drives lap timing + best.
 function updateProgress(c, isPlayer) {
   const s = querySurface(c.x, c.y, c).s; c.s = s;
@@ -1116,6 +1178,7 @@ function updateProgress(c, isPlayer) {
     if (isPlayer) {
       if (c.lap >= 2 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
       lap = c.lap; lapStart = perf; lapNow = 0;
+      respawnScenery();                                 // stand the knocked-down hoardings back up each lap
       if (c.lap > track.laps) finishRace();             // crossed the line on the final lap -> race over
     }
   }
@@ -1175,6 +1238,7 @@ function loop(t) {
       // rivals: same physics, input from the AI driver
       for (const a of aiCars) { const ai = aiDriver(a); applyInput(a, ai, dt); for (let i = 0; i < sub; i++) step(a, ai, dt / sub); }
       resolveCollisions();
+      for (const c of allCars) sceneryCollide(c);
       // lap timing + progress for every car
       lapNow = perf - lapStart;
       updateProgress(car, true);
@@ -1261,6 +1325,7 @@ function beginRace() {
   lap = 0; lapStart = perf; lapNow = 0; lastS = 0;   // lap 0 = on the grid; first line crossing -> lap 1
   countdown = 3.2; finished = false; standings = null;
   telemetry = [];                                    // fresh trace each race
+  respawnScenery();                                  // all hoardings standing at the start
 }
 function startGame() {
   beginRace();
