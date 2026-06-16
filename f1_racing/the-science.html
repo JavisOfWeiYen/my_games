@@ -189,6 +189,7 @@
     <li><b>側面擦撞</b>：力沒對準車子重心，就會產生「<b>旋轉</b>」（這叫力矩）→ 車頭被撞歪、甩出去。遊戲裡側撞會看到車子被「轉開」就是這個。</li>
   </ul>
   <div class="key">真實賽車相撞大多是「<b>黏一下</b>」（非彈性碰撞），不會像橡皮球那樣彈得老遠——能量被變形、摩擦吃掉了。所以纏鬥時輕輕「靠」可以，硬撞只會兩敗俱傷。</div>
+  <p style="margin-top:14px"><b>路邊的東西也會撞：</b>跑太寬撞到<b>樹或看台</b>，它們像一面牆——把你的速度刮掉、再彈回賽道；撞到<b>廣告看板</b>則會把它「撞飛」（只稍微掉速，每圈會重新立起）。所以跑寬是有代價的，但偶爾蹭一下不會讓你直接出局。</p>
 </div>
 
 <!-- 12 -->
@@ -205,6 +206,22 @@
   <div class="key"><b>「容易」和「困難」差在哪？</b>同一套規則，只是把幾個數字調一下——困難的對手<b>更晚才煞車、過彎逼得更貼極限</b>，所以更快，但也因此偶爾會跑出賽道。電腦的「強弱」往往就是幾個參數的差別。</div>
 </div>
 
+<!-- 13 -->
+<h2><span class="n">13</span>直線加速的兩個法寶：ERS 與 DRS</h2>
+<p class="sub">同一台車，會不會用這兩樣，差超多。</p>
+<div class="card">
+  <p class="analogy"><b>ERS（電能加速）</b>：賽車除了引擎，還有一顆電池 + 馬達。按下去會額外多給一股推力——回到第 1 點 <span class="em">a = 力 ÷ 質量</span>，力變大、加速就更猛。它像腳踏車的<b>電動輔助</b>，但電量有限，煞車時會回充。</p>
+  <p class="analogy" style="margin-top:10px"><b>DRS（可變尾翼）</b>：把尾翼「打開」放平，<b>空氣阻力大幅降低</b>（回到第 3 點）——阻力小了，同樣的推力能讓你衝更快、極速更高。代價是沒了尾翼的下壓力，所以只能在<b>直線</b>用；一進彎、一煞車就會自動收起來。</p>
+  <p>到底差多少？同一台車從靜止全油門，實測加速到各速度要幾秒：</p>
+  <table>
+    <tr><th>加速到</th><th>不用 ERS/DRS</th><th>開 ERS + DRS</th></tr>
+    <tr><td>100 km/h</td><td>約 2.5 秒</td><td class="gear">約 1.7 秒</td></tr>
+    <tr><td>150 km/h</td><td>約 4.7 秒</td><td class="gear">約 2.9 秒</td></tr>
+    <tr><td>200 km/h</td><td class="warn">很久 / 衝不太上去</td><td class="gear">約 4.4 秒</td></tr>
+  </table>
+  <div class="key">電腦對手<b>每段直線都會自動開 DRS、放 ERS</b>。所以如果你在直線上沒按 <span class="kbd">Shift</span>(ERS) 和 <span class="kbd">F</span>(DRS)，加速力差快一倍，當然<b>被 AI 拉開、追不上</b>。秘訣：<b>一進直線就按住 Shift + F</b>，出彎也早點放 ERS。</div>
+</div>
+
 <!-- cheat sheet -->
 <h2><span class="n">★</span>一張表記住怎麼開</h2>
 <div class="card">
@@ -216,6 +233,7 @@
     <tr><td>大彎 / 高速彎</td><td>可以開快</td><td>半徑大 + 下壓力幫忙</td></tr>
     <tr><td>髮夾彎 / 小彎</td><td>一定要慢（一二檔）</td><td>半徑小，過彎極限速度低</td></tr>
     <tr><td>掉草地</td><td>先鬆油、慢慢轉回</td><td>抓地只剩六成，硬轉會打滑</td></tr>
+    <tr><td>上直線</td><td>按住 ERS + DRS</td><td>多一股推力又少阻力，不開就輸 AI</td></tr>
   </table>
   <div class="key">控制鍵：<span class="kbd">W / ↑</span> 油門 · <span class="kbd">S / ↓</span> 煞車 · <span class="kbd">A D / ← →</span> 轉向 · <span class="kbd">Shift</span> ERS 加速 · <span class="kbd">F</span> DRS · <span class="kbd">空白</span> 手煞車</div>
 </div>
