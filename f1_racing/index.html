@@ -1033,12 +1033,16 @@ function drawHud() {
 function drawLogo() {
   if (!logoReady || !lastDash) return;
   const { x0, y0, ph } = lastDash;
-  const rightX = x0 - 14;                       // sit just left of the binnacle
-  const avail = rightX - 186;                   // 186 ≈ right edge of the bottom-left ◀▶ buttons
-  if (avail < 64) return;                        // no usable room (very narrow screens) -> skip cleanly
-  const w = Math.min(avail, 184 * (H / 600)), h = w * (236 / 1004);
-  const x = rightX - w, y = y0 + (ph - h) / 2;
-  ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(logoImg, x, y, w, h); ctx.restore();
+  const leftX = 190;                             // just right of the bottom-left ◀▶ steering buttons
+  // keep the logo clear of the steering wheel: find the wheel's left edge at the logo's height
+  const R = H * 0.40, cyW = H + R * 0.42, yMid = y0 + ph * 0.5, dyc = cyW - yMid;
+  const wheelLeft = dyc < R ? W / 2 - Math.sqrt(R * R - dyc * dyc) : W / 2;
+  const rightLimit = Math.min(x0 - 14, wheelLeft - 12);   // clear the binnacle AND the wheel rim
+  const avail = rightLimit - leftX;
+  if (avail < 64) return;                        // no usable room -> skip cleanly
+  const w = Math.min(avail, 200 * (H / 600)), h = w * (236 / 1004);
+  const y = y0 + (ph - h) / 2;
+  ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(logoImg, leftX, y, w, h); ctx.restore();
 }
 function drawMinimap() {
   const pad = 14, size = 132, x0 = W - size - pad, y0 = pad;
