@@ -1216,8 +1216,10 @@ function updateProgress(c, isPlayer) {
       if (c.lap >= 2 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
       lap = c.lap; lapStart = perf; lapNow = 0;
       respawnScenery();                                 // stand the knocked-down hoardings back up each lap
-      if (c.lap > track.laps) finishRace();             // crossed the line on the final lap -> race over
     }
+    // chequered flag: the FIRST car — player OR a rival — to complete the final lap ends the race,
+    // so it finishes properly even if the player never drives away from the grid.
+    if (!finished && c.lap > track.laps) finishRace();
   }
   c.lastS = s;
 }
