@@ -606,8 +606,8 @@ function aiDriver(c) {
 
 // ===== 6. CAMERA (first-person / cockpit: at the driver, eye level) + ground projection =====
 let camYaw = 0;
-const BACK = 1.3, CAMH = 2.7, HORIZON = 0.44, FOCAL_BASE = 330;
-let _camx = 0, _camy = 0, _focal = FOCAL_BASE, _horizonY = 0, _cyaw = 0;
+const BACK = 1.3, CAMH = 2.7, HORIZON = 0.44, FOCAL_BASE = 330, NEAR = 0.6;
+let _camx = 0, _camy = 0, _focal = FOCAL_BASE, _horizonY = 0, _cyaw = 0, _cc = 1, _ss = 0;
 function updateCam(dt) {
   let dA = car.a - camYaw; while (dA > Math.PI) dA -= 2*Math.PI; while (dA < -Math.PI) dA += 2*Math.PI;
   camYaw += dA * Math.min(1, dt * 5);     // smooth yaw so spins don't whip the view
@@ -615,20 +615,45 @@ function updateCam(dt) {
 }
 function setupProjection() {
   _cyaw = camYaw;
-  _camx = car.x - Math.cos(camYaw) * BACK;
-  _camy = car.y - Math.sin(camYaw) * BACK;
+  _cc = Math.cos(camYaw); _ss = Math.sin(camYaw);
+  _camx = car.x - _cc * BACK;
+  _camy = car.y - _ss * BACK;
   _horizonY = H * HORIZON;
   _focal = FOCAL_BASE * (H / 600);
 }
 // project a ground point (world, z=0) to screen via the chase camera
 function project(wx, wy) {
   const dx = wx - _camx, dy = wy - _camy;
-  const c = Math.cos(_cyaw), s = Math.sin(_cyaw);
-  const fwd = dx * c + dy * s;
-  if (fwd < 0.6) return null;             // behind the camera
-  const right = -dx * s + dy * c;
+  const fwd = dx * _cc + dy * _ss;
+  if (fwd < NEAR) return null;            // behind the camera
+  const right = -dx * _ss + dy * _cc;
   const sc = _focal / fwd;
   return { x: W / 2 + right * sc, y: _horizonY + CAMH * sc, sc, fwd };
+}
+// fill a convex world-space polygon (points in {x,y}), Sutherland–Hodgman-clipped to the camera
+// near plane so quads that straddle the camera get TRIMMED, not dropped whole. Dropping them was
+// punching holes in the foreground road that flashed the green ground through mid-corner.
+function fillPolyW(P, fill) {
+  const n = P.length, clip = [];
+  let prev = P[n - 1], fprev = (prev.x - _camx) * _cc + (prev.y - _camy) * _ss;
+  for (let i = 0; i < n; i++) {
+    const cur = P[i], fcur = (cur.x - _camx) * _cc + (cur.y - _camy) * _ss;
+    const inPrev = fprev >= NEAR, inCur = fcur >= NEAR;
+    if (inCur !== inPrev) {                                   // crosses the near plane -> add the crossing
+      const t = (NEAR - fprev) / (fcur - fprev);
+      clip.push({ x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t });
+    }
+    if (inCur) clip.push(cur);
+    prev = cur; fprev = fcur;
+  }
+  if (clip.length < 3) return;
+  ctx.fillStyle = fill; ctx.beginPath();
+  for (let i = 0; i < clip.length; i++) {
+    const q = clip[i], fwd = (q.x - _camx) * _cc + (q.y - _camy) * _ss, sc = _focal / fwd;
+    const sx = W / 2 + (-(q.x - _camx) * _ss + (q.y - _camy) * _cc) * sc, sy = _horizonY + CAMH * sc;
+    if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+  }
+  ctx.closePath(); ctx.fill();
 }
 
 // ===== 7. RENDER =====
@@ -724,46 +749,48 @@ function rib(i, t) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, nx: nx / l, ny: ny / l };
 }
 function drawRoad() {
-  const pts = track.pts, N = pts.length, P = (x, y) => project(x, y), quads = [];
+  const pts = track.pts, N = pts.length, quads = [];
+  const FW = (x, y) => (x - _camx) * _cc + (y - _camy) * _ss;   // forward distance of a world point
   for (let n = -4; n < 160; n++) {
     const i = ((car.nearIdx + n) % N + N) % N, a = pts[i], b = pts[(i + 1) % N];
-    // subdivide the nearby segments: centreline points can be ~26m apart on long
-    // straights, so a single near segment would straddle the cockpit camera and be
-    // culled, leaving a hole. Fine ribs keep the foreground filled.
+    // subdivide the nearby segments: centreline points can be ~26m apart on long straights,
+    // so keep the foreground finely ribbed (clipping then trims each rib to the near plane).
     const segLen = Math.hypot(b.x - a.x, b.y - a.y);
     const sub = n < 16 ? Math.max(1, Math.min(10, Math.round(segLen / 5))) : 1;
     for (let j = 0; j < sub; j++) {
       const r0 = rib(i, j / sub), r1 = rib(i, (j + 1) / sub);
-      const aL = P(r0.x + r0.nx*HALF_W, r0.y + r0.ny*HALF_W), aR = P(r0.x - r0.nx*HALF_W, r0.y - r0.ny*HALF_W);
-      const bL = P(r1.x + r1.nx*HALF_W, r1.y + r1.ny*HALF_W), bR = P(r1.x - r1.nx*HALF_W, r1.y - r1.ny*HALF_W);
-      if (!aL || !aR || !bL || !bR) continue;
-      quads.push({ r0, r1, i, j, aL, aR, bL, bR, fwd: Math.min(aL.fwd, bL.fwd) });
+      const f0 = FW(r0.x, r0.y), f1 = FW(r1.x, r1.y);
+      if (f0 < NEAR && f1 < NEAR) continue;                     // whole rib-quad behind the camera
+      quads.push({ r0, r1, i, j, fwd: Math.min(f0, f1) });
     }
   }
   quads.sort((p, q) => q.fwd - p.fwd);            // far -> near (painter's order)
   for (const q of quads) {
-    const { r0, r1, i, j, aL, aR, bL, bR } = q;
-    poly4(aL, aR, bR, bL, (Math.floor(i/4)%2) ? '#2b2e35' : '#31343c');   // asphalt (subtle banding)
+    const { r0, r1, i, j } = q, HL = HALF_W;
+    // asphalt (subtle banding)
+    fillPolyW([{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL },
+               { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }],
+              (Math.floor(i/4)%2) ? '#2b2e35' : '#31343c');
     // white edge lines
     const eo = HALF_W - 0.55;
-    const aLi = P(r0.x + r0.nx*eo, r0.y + r0.ny*eo), aRi = P(r0.x - r0.nx*eo, r0.y - r0.ny*eo);
-    const bLi = P(r1.x + r1.nx*eo, r1.y + r1.ny*eo), bRi = P(r1.x - r1.nx*eo, r1.y - r1.ny*eo);
-    if (aLi && bLi) poly4(aL, aLi, bLi, bL, 'rgba(238,242,255,.8)');
-    if (aRi && bRi) poly4(aRi, aR, bR, bRi, 'rgba(238,242,255,.8)');
+    fillPolyW([{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL }, { x: r0.x + r0.nx*eo, y: r0.y + r0.ny*eo },
+               { x: r1.x + r1.nx*eo, y: r1.y + r1.ny*eo }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }], 'rgba(238,242,255,.8)');
+    fillPolyW([{ x: r0.x - r0.nx*eo, y: r0.y - r0.ny*eo }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL },
+               { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x - r1.nx*eo, y: r1.y - r1.ny*eo }], 'rgba(238,242,255,.8)');
     // kerbs on the inside of corners
     if (Math.abs(pts[i].curv) > 0.02) {
       const side = pts[i].curv > 0 ? 1 : -1, o1 = HALF_W, o2 = HALF_W + KERB_W;
-      const k1a = P(r0.x + r0.nx*side*o1, r0.y + r0.ny*side*o1), k2a = P(r0.x + r0.nx*side*o2, r0.y + r0.ny*side*o2);
-      const k1b = P(r1.x + r1.nx*side*o1, r1.y + r1.ny*side*o1), k2b = P(r1.x + r1.nx*side*o2, r1.y + r1.ny*side*o2);
-      if (k1a && k2a && k1b && k2b) poly4(k1a, k2a, k2b, k1b, ((i + j) % 2) ? '#e23b3b' : '#eef2fb');
+      fillPolyW([{ x: r0.x + r0.nx*side*o1, y: r0.y + r0.ny*side*o1 }, { x: r0.x + r0.nx*side*o2, y: r0.y + r0.ny*side*o2 },
+                 { x: r1.x + r1.nx*side*o2, y: r1.y + r1.ny*side*o2 }, { x: r1.x + r1.nx*side*o1, y: r1.y + r1.ny*side*o1 }],
+                ((i + j) % 2) ? '#e23b3b' : '#eef2fb');
     }
     // start/finish checker
     if (i < 2) {
       for (let c = 0; c < 8; c++) {
         const t1 = -HALF_W + 2*HALF_W*(c/8), t2 = -HALF_W + 2*HALF_W*((c+1)/8);
-        const p1 = P(r0.x + r0.nx*t1, r0.y + r0.ny*t1), p2 = P(r0.x + r0.nx*t2, r0.y + r0.ny*t2);
-        const p3 = P(r1.x + r1.nx*t2, r1.y + r1.ny*t2), p4 = P(r1.x + r1.nx*t1, r1.y + r1.ny*t1);
-        if (p1 && p2 && p3 && p4) poly4(p1, p2, p3, p4, ((c + i + j) % 2) ? '#10131a' : '#eef2fb');
+        fillPolyW([{ x: r0.x + r0.nx*t1, y: r0.y + r0.ny*t1 }, { x: r0.x + r0.nx*t2, y: r0.y + r0.ny*t2 },
+                   { x: r1.x + r1.nx*t2, y: r1.y + r1.ny*t2 }, { x: r1.x + r1.nx*t1, y: r1.y + r1.ny*t1 }],
+                  ((c + i + j) % 2) ? '#10131a' : '#eef2fb');
       }
     }
   }
@@ -836,16 +863,22 @@ function drawStand(o, p) {
   // sloped terrace
   ctx.fillStyle = '#8b93a2'; ctx.beginPath();
   ctx.moveTo(x0, gy); ctx.lineTo(x0 + w, gy); ctx.lineTo(x0 + w, top + h * 0.55); ctx.lineTo(x0, top + h * 0.25); ctx.closePath(); ctx.fill();
-  // speckled crowd
-  const CROWD = ['#e8e2d6', '#d83b3b', '#2e72d8', '#1faf6a', '#e8a92b', '#cccfd6'];
-  const cols = Math.max(4, (w / 3) | 0), rows = Math.max(3, (h / 3) | 0);
+  // speckled crowd — mostly a muted warm-grey mass with the occasional colour pop, so it reads
+  // as a packed stand of people rather than confetti. Dense + small dots = fine texture, not scatter.
+  const NEUT = ['#b9b2a4', '#a2988a', '#cbc4b6', '#8d94a0', '#9a9384'];   // skin / clothing greys (dominant)
+  const POP  = ['#b5544e', '#4a6ea8', '#4f9673', '#c79a4a'];             // desaturated colour pops (rare)
+  // FIXED seat grid from the stand's real-world size (o.w/o.h in metres), NOT its on-screen size:
+  // only the dot SIZE scales with distance. Keeps this O(1) per stand — deriving cols/rows from the
+  // pixel width made it O(sc^2), so a stand up close fired tens of thousands of fillRects (frame spike).
+  const cols = Math.max(8, Math.round(o.w * 1.6)), rows = Math.max(6, Math.round(o.h * 2.0));
+  const dw = Math.max(1, sc * 0.14), dh = Math.max(1, sc * 0.2);
   for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) {
-    if (rnd() < 0.55) continue;
-    const u = cc / cols, frontY = top + h * 0.25 + (h * 0.30) * u;     // follow the terrace slope
-    const px = x0 + u * w + rnd() * (w / cols) * 0.6;
+    if (rnd() < 0.22) continue;                                          // a scatter of empty seats
+    const u = cc / cols, frontY = top + h * 0.25 + (h * 0.30) * u;       // follow the terrace slope
+    const px = x0 + u * w + rnd() * (w / cols) * 0.5;
     const pyd = frontY + (gy - frontY) * (r / rows);
-    ctx.fillStyle = CROWD[(rnd() * CROWD.length) | 0];
-    ctx.fillRect(px, pyd, Math.max(1, sc * 0.22), Math.max(1, sc * 0.28));
+    ctx.fillStyle = rnd() < 0.78 ? NEUT[(rnd() * NEUT.length) | 0] : POP[(rnd() * POP.length) | 0];
+    ctx.fillRect(px, pyd, dw, dh);
   }
   // roof canopy + shaded lip
   ctx.fillStyle = '#dde3ed'; ctx.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
@@ -989,7 +1022,7 @@ function drawDash() {
 }
 // telemetry bars (top-left): ERS battery, fuel, tyre compound/wear/temp, DRS
 function drawTelemetry() {
-  const x = 14, w = 156; let y = 66;
+  const x = 14, w = 156; let y = 104;   // start below the P / LAP / BEST / track-name text block (ends ~y88)
   const row = (label, frac, col, valTxt, glow) => {
     ctx.textAlign = 'left'; ctx.fillStyle = '#9fb0cf'; ctx.font = '600 10px system-ui, sans-serif'; ctx.fillText(label, x, y - 2);
     ctx.textAlign = 'right'; ctx.fillStyle = '#7f8ba6'; ctx.fillText(valTxt, x + w, y - 2); ctx.textAlign = 'left';
