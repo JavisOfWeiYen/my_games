@@ -355,6 +355,25 @@ function buildScenery(pts, N) {
       }
     }
   }
+  // tyre barriers hugging the outside of the sharpest corners — stacked black rings
+  // where a car is most likely to sail off
+  for (let i = 0; i < N; i++) {
+    if (Math.abs(pts[i].curv) < thr * 1.25 || i % 3) continue;      // only real corners, spaced stacks
+    const p = pts[i], side = p.curv > 0 ? -1 : 1;                   // outside of the turn
+    const x = p.x + p.nx * side * (HALF_W + 3.4), y = p.y + p.ny * side * (HALF_W + 3.4);
+    props.push({ t: 'tyres', x, y, seg: i, solid: true, cc: [{ x, y, r: 1.5 }] });
+  }
+  // low pit wall framing the start/finish straight, in front of the grandstands
+  for (const side of [-1, 1]) {
+    for (let k = 2; k <= 18; k += 2) {
+      const p = pts[k % N], q = pts[(k + 2) % N], off = HALF_W + 1.8;
+      const x1 = p.x + p.nx * side * off, y1 = p.y + p.ny * side * off;
+      const x2 = q.x + q.nx * side * off, y2 = q.y + q.ny * side * off;
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      props.push({ t: 'wall', x: mx, y: my, seg: k % N, solid: true, x1, y1, x2, y2,
+        cc: [{ x: (x1 + mx) / 2, y: (y1 + my) / 2, r: 1.2 }, { x: (x2 + mx) / 2, y: (y2 + my) / 2, r: 1.2 }] });
+    }
+  }
   // grandstands flanking the pit straight (start/finish, around index 0) — solid wall,
   // approximated by three collision circles laid along the track tangent.
   for (const side of [-1, 1]) {
@@ -730,6 +749,7 @@ function render() {
   drawCars();
   drawSmokeP();
   drawSpeedLines();
+  drawFrontTyres();
   vignette();
   drawWheel();
   drawHud();
@@ -989,6 +1009,7 @@ function drawScenery() {
     if (o.t === 'tree') groundShadow(o.x, o.y, o.r * 0.95, o.h * 3, 0.18);
     else if (o.t === 'board') groundShadow(o.x, o.y, 3, 7, 0.16);
     else if (o.t === 'marker') groundShadow(o.x, o.y, 0.95, 3.5, 0.16);
+    else if (o.t === 'tyres') groundShadow(o.x, o.y, 1.6, 3.5, 0.16);
     else if (o.t === 'gantry') { groundShadow(o.lx, o.ly, 0.5, 16, 0.16); groundShadow(o.rx, o.ry, 0.5, 16, 0.16); }
     else if (o.t === 'stand') {
       const hw = o.w / 2, L = 17;
@@ -1008,9 +1029,35 @@ function drawScenery() {
     else if (o.t === 'board') drawBoard(o, p);
     else if (o.t === 'marker') drawMarker(o, p);
     else if (o.t === 'gantry') drawGantry(o, p);
+    else if (o.t === 'wall') drawWall(o, p);
+    else if (o.t === 'tyres') drawTyres(o, p);
     else drawStand(o, p);
   }
   ctx.globalAlpha = 1;
+}
+// low pit wall: an extruded face between two ground points, with a bright top cap and a
+// sponsor stripe — frames the pit straight the way the grandstands alone can't
+function drawWall(o, p) {
+  const A = project(o.x1, o.y1), B = project(o.x2, o.y2);
+  if (!A || !B) return;
+  const hA = 1.05 * A.sc, hB = 1.05 * B.sc;
+  ctx.fillStyle = '#a7adb9';
+  ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.lineTo(B.x, B.y - hB); ctx.lineTo(A.x, A.y - hA); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#d9dde5';                                 // top cap catches the sky
+  ctx.beginPath(); ctx.moveTo(A.x, A.y - hA); ctx.lineTo(B.x, B.y - hB); ctx.lineTo(B.x, B.y - hB * 1.14); ctx.lineTo(A.x, A.y - hA * 1.14); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(216,59,59,.85)'; ctx.lineWidth = Math.max(1, 0.16 * (A.sc + B.sc) / 2);
+  ctx.beginPath(); ctx.moveTo(A.x, A.y - hA * 0.55); ctx.lineTo(B.x, B.y - hB * 0.55); ctx.stroke();
+}
+// tyre barrier: a 3+2 pyramid of dark rings
+function drawTyres(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, r = 0.55 * sc;
+  if (r < 1.5 || x < -60 || x > W + 60) return;
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(x, gy, r * 2.6, Math.max(1, r * 0.5), 0, 0, 7); ctx.fill();
+  const spots = [[-1.9, 0], [0, 0], [1.9, 0], [-0.95, 1], [0.95, 1]];
+  ctx.fillStyle = '#13151a';
+  for (const [ox, lvl] of spots) { ctx.beginPath(); ctx.arc(x + ox * r, gy - r * 0.95 - lvl * r * 1.65, r, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = Math.max(1, r * 0.16);
+  for (const [ox, lvl] of spots) { ctx.beginPath(); ctx.arc(x + ox * r, gy - r * 0.95 - lvl * r * 1.65, r * 0.55, 0, 7); ctx.stroke(); }
 }
 // braking-distance board: white plate, red cap band, big black metres count — the classic
 // trackside cue for where to brake. Doubles as a gameplay aid on corner approach.
@@ -1195,6 +1242,10 @@ function drawCarSprite(c, p) {
   const sc = p.sc, w = 2.05 * sc, h = 1.32 * sc, cx = p.x, gy = p.y;
   if (cx < -w || cx > W + w || w < 1.4) return;                          // off-screen / too tiny to detail
   const L = c.livery, topY = gy - h, half = w * 0.5;
+  // yaw shear: when the rival is angled relative to our view (turning in, sliding), its
+  // upper bodywork slides sideways while the tyres stay planted — a cheap 3/4 view
+  let relA = c.a - camYaw; while (relA > Math.PI) relA -= 2 * Math.PI; while (relA < -Math.PI) relA += 2 * Math.PI;
+  const shear = Math.max(-1, Math.min(1, Math.sin(relA) * 1.5)) * w * 0.16;
   // ground shadow
   ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(cx, gy, w * 0.58, h * 0.15, 0, 0, 7); ctx.fill();
   // rear tyres
@@ -1206,27 +1257,56 @@ function drawCarSprite(c, p) {
   ctx.fillRect(cx + half - tyW * 0.8, gy - tyH * 0.8, tyW * 0.6, Math.max(1, h * 0.03));
   // diffuser / floor across the centre bottom
   ctx.fillStyle = '#15181e'; rrectP(cx - w * 0.3, gy - h * 0.16, w * 0.6, h * 0.16, 2); ctx.fill();
-  // engine cover (tapered trapezoid) in base colour
+  // engine cover (tapered trapezoid) in base colour — top edge shears with yaw
   ctx.fillStyle = L.base;
   ctx.beginPath();
   ctx.moveTo(cx - w * 0.23, gy - h * 0.1); ctx.lineTo(cx + w * 0.23, gy - h * 0.1);
-  ctx.lineTo(cx + w * 0.085, topY + h * 0.2); ctx.lineTo(cx - w * 0.085, topY + h * 0.2);
+  ctx.lineTo(cx + shear + w * 0.085, topY + h * 0.2); ctx.lineTo(cx + shear - w * 0.085, topY + h * 0.2);
   ctx.closePath(); ctx.fill();
   // central accent stripe + airbox fin
-  ctx.fillStyle = L.accent; rrectP(cx - w * 0.035, topY + h * 0.2, w * 0.07, h * 0.5, 1); ctx.fill();
-  ctx.fillStyle = L.base; rrectP(cx - w * 0.055, topY + h * 0.08, w * 0.11, h * 0.16, 1); ctx.fill();
-  if (L.hint) { ctx.fillStyle = L.hint; rrectP(cx - w * 0.02, topY + h * 0.1, w * 0.04, h * 0.12, 1); ctx.fill(); }
-  // rear wing: wide top plane + dark trailing lip + endplates
-  const wingY = topY + h * 0.04, wingH = h * 0.12;
-  ctx.fillStyle = L.wing; rrectP(cx - half, wingY, w, wingH, 2); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(cx - half, wingY + wingH, w, Math.max(1, h * 0.04));
+  ctx.fillStyle = L.accent; rrectP(cx + shear * 0.85 - w * 0.035, topY + h * 0.2, w * 0.07, h * 0.5, 1); ctx.fill();
+  ctx.fillStyle = L.base; rrectP(cx + shear - w * 0.055, topY + h * 0.08, w * 0.11, h * 0.16, 1); ctx.fill();
+  if (L.hint) { ctx.fillStyle = L.hint; rrectP(cx + shear - w * 0.02, topY + h * 0.1, w * 0.04, h * 0.12, 1); ctx.fill(); }
+  // rear wing: wide top plane + dark trailing lip + endplates, riding the same shear
+  const wingY = topY + h * 0.04, wingH = h * 0.12, wx = cx + shear;
+  ctx.fillStyle = L.wing; rrectP(wx - half, wingY, w, wingH, 2); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(wx - half, wingY + wingH, w, Math.max(1, h * 0.04));
   ctx.fillStyle = L.accent;
-  rrectP(cx - half, wingY - h * 0.02, w * 0.06, wingH + h * 0.14, 1); ctx.fill();
-  rrectP(cx + half - w * 0.06, wingY - h * 0.02, w * 0.06, wingH + h * 0.14, 1); ctx.fill();
-  // brake-light dot
-  ctx.fillStyle = '#ff3b30'; ctx.beginPath(); ctx.arc(cx, gy - h * 0.2, Math.max(1, w * 0.035), 0, 7); ctx.fill();
+  rrectP(wx - half, wingY - h * 0.02, w * 0.06, wingH + h * 0.14, 1); ctx.fill();
+  rrectP(wx + half - w * 0.06, wingY - h * 0.02, w * 0.06, wingH + h * 0.14, 1); ctx.fill();
+  // rain light: dim by default, blazing with a glow while the rival is on the brakes
+  const braking = c.brake > 0.25, lr = Math.max(1, w * 0.035);
+  ctx.fillStyle = braking ? '#ff2d23' : 'rgba(255,59,48,.35)';
+  ctx.beginPath(); ctx.arc(cx, gy - h * 0.2, lr, 0, 7); ctx.fill();
+  if (braking) {
+    const ga = ctx.globalAlpha; ctx.globalAlpha = ga * 0.4;
+    ctx.beginPath(); ctx.arc(cx, gy - h * 0.2, lr * 2.4, 0, 7); ctx.fill();
+    ctx.globalAlpha = ga;
+  }
 }
 function rrectP(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+// the player's own front wheels poking into the bottom corners of the view, steering with
+// the driver's input — the strongest "you are IN a car" cue the cockpit can give
+function drawFrontTyres() {
+  const s = H / 600, tw = 86 * s, th = 150 * s, ty = H - th * 0.42;
+  const ang = clamp(car.steer * 1.15, -0.6, 0.6);
+  for (const side of [-1, 1]) {
+    const txc = W / 2 + side * W * 0.335;
+    ctx.save(); ctx.translate(txc, ty); ctx.rotate(ang);
+    // suspension arms reaching in toward the chassis
+    ctx.strokeStyle = '#1a1d24'; ctx.lineWidth = 7 * s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-side * tw * 0.45, -th * 0.18); ctx.lineTo(-side * tw * 2.1, th * 0.30); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-side * tw * 0.45, th * 0.10); ctx.lineTo(-side * tw * 2.0, th * 0.48); ctx.stroke();
+    // tyre: dark slick with a soft top highlight
+    ctx.fillStyle = '#0b0d11'; rrectP(-tw / 2, -th / 2, tw, th, tw * 0.30); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; rrectP(-tw / 2 + 4 * s, -th / 2 + 4 * s, tw - 8 * s, th * 0.16, tw * 0.22); ctx.fill();
+    // compound-colour sidewall ring on the inner face, like the real allocation stripes
+    ctx.strokeStyle = COMPOUNDS[car.tyre.compound].col; ctx.lineWidth = 3.5 * s; ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.ellipse(-side * (tw / 2 - 4 * s), 0, 4.5 * s, th * 0.30, 0, 0, 7); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
 function drawWheel() {
   // first-person: an F1-style wheel anchored to the bottom of the screen, rotating
   // with the actual front-wheel angle. Its pivot is below the frame so only the
