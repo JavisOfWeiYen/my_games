@@ -36,6 +36,15 @@ it when the lights go out. Rivals appear both on the **minimap** and in the cock
 view, and you can **bump and trade paint** — contact shoves cars around and a
 side-swipe twists them off line. 車隊在**起跑線後**排成正規起跑格,燈滅後一起衝線;對手會出現在**小地圖**與座艙視野中,而且**會碰撞卡位**——追撞會推擠、側撞會把車轉歪。
 
+**Sector timing 分段計時** — the lap is split into S1/S2/S3; each split flashes your
+gap to the session best (green = personal best). 每圈分三段計時,過分段點會顯示與該節最佳的差距(綠色=個人最佳)。
+
+**Pit stops 進站換胎** — press **T** to arm a compound, then dive into the **pit lane**
+(follow the yellow `PIT →` board before the main straight). The limiter caps you at
+90 km/h; stop inside the **yellow box** and the crew bolts on fresh tyres in ~2.6 s.
+按 **T** 先選好配方,沿著黃色 `PIT →` 指示牌進入**維修車道**(自動限速 90),停進**黃色停車格**,
+約 2.6 秒換上新胎再出站。
+
 ## 🎮 Controls 操作
 
 | Action 動作 | Keyboard 鍵盤 | Touch 觸控 |
@@ -46,7 +55,7 @@ side-swipe twists them off line. 車隊在**起跑線後**排成正規起跑格,
 | Handbrake 手煞 | `Space` | 手煞 |
 | ERS boost 能量加速 | `Shift` | ERS ⚡ |
 | DRS (low drag) 低阻力 | `F` | DRS |
-| Change tyres 換胎 | `T` | 胎 TYRE |
+| Pick pit-stop tyre 選進站胎 | `T` | 胎 TYRE |
 | Reset / race again 回起點/再比 | `R` | Reset |
 | Pause 暫停 | `P` | Pause |
 

@@ -99,7 +99,7 @@
   <div id="overlay">
     <h1>Apex GP</h1>
     <p>A first-person racing <b>simulator</b> — real grip, weight transfer and slides, with tyres that wear and heat up, ERS boost, DRS and a draining fuel load. Brake early, hit the apex, feed the throttle out of the corner. 第一人稱賽車模擬：真實抓地與配重，輪胎會磨耗升溫、ERS 加速、DRS、油量遞減。抓煞車點、切 Apex、出彎補油。</p>
-    <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · <b>Shift ERS</b> · <b>F DRS</b> · <b>T tyres 換胎</b> · R reset · P pause<br>📱 on-screen buttons (incl. ERS / DRS / 胎)</p>
+    <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · <b>Shift ERS</b> · <b>F DRS</b> · <b>T 選進站胎 pit tyre</b> · R reset · P pause<br>📱 on-screen buttons (incl. ERS / DRS / 胎) · 🔧 進 PIT 停妥即換胎 stop in the pit box to change tyres</p>
     <div id="trackPick"></div>
     <div id="oppPick"></div>
     <div id="diffPick"></div>
@@ -141,6 +141,15 @@ const ROLL = 560, RESIST = 42, DRAG = 0.45;      // ROLL: ~constant rolling drag
 const MAX_STEER = 0.52;                          // rad at low speed (more lock = tighter corners)
 const HALF_W = 9.5, KERB_W = 1.4;                // track half-width, kerb width (wider = more room for error)
 const G = 9.8;
+// ----- pit lane (Phase 2) -----
+// A service road alongside the start/finish straight, behind the pit wall: enter before the
+// line, crawl through at the limiter, stop in the box for fresh tyres, rejoin after the wall.
+const PIT_SIDE = 1;                              // which side of the centreline the lane lives on
+const PIT_OFF = 14.4;                            // lane centre offset from track centre (m), outside the pit wall
+const PIT_ENTRY = -10, PIT_EXIT = 24;            // segment range (relative to index 0) the lane spans
+const PIT_BOX = 8;                               // segment of the stop box
+const PIT_SPEED = 25;                            // lane speed cap, m/s (~90 km/h) — arcade-fast so a stop costs ~10 s, not 25
+const PIT_TIME = 2.6;                            // seconds stationary for a tyre change
 
 // ----- Phase 1 systems -----
 const FUEL_MASS = 110;                           // kg of fuel in a full tank, added to MASS (light car = faster)
@@ -231,6 +240,12 @@ let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
 let countdown = 0, finished = false, standings = null, goFlash = 0;   // race start lights + finish standings
+// pit-stop state (player): the selected next compound, the running stop timer, and flags
+let nextCompound = 'medium', pitStop = 0, pitDone = false, pitLaneNow = false;
+// sector timing (player): current sector index, its start time, this lap's times, session bests,
+// and a short-lived delta popup after each split
+let curSec = 0, secStart = 0, secTimes = [0, 0, 0], bestSec = [0, 0, 0], secFlash = null;
+function resetSectors() { curSec = 0; secStart = perf; secTimes = [0, 0, 0]; secFlash = null; }
 // telemetry: per-frame trace of the player's drive (position, speed, inputs) so a real
 // human lap can be recorded, exported and analysed — then used to teach the AI.
 let telemetry = [], recording = true;
@@ -291,11 +306,31 @@ function buildTrack(def) {
   let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
   for (const p of pts) { minx = Math.min(minx, p.x); miny = Math.min(miny, p.y); maxx = Math.max(maxx, p.x); maxy = Math.max(maxy, p.y); }
   track = { def, name: def.name, laps: def.laps, pts, total, minx, miny, maxx, maxy };
+  track.pit = buildPitLane(pts, N);
   track.scenery = buildScenery(pts, N);
   // bucket collidable props by segment so each car only tests the few props beside it
   const bk = Array.from({ length: N }, () => []);
   for (const o of track.scenery) if (o.cc) bk[o.seg].push(o);
   track.sceneryBuckets = bk;
+}
+
+// pit-lane geometry: an eased offset per centreline index (entry ramp -> full lane -> exit
+// ramp), plus an ordered point list for rendering and the box's arc-position for the stop.
+function buildPitLane(pts, N) {
+  const off = new Array(N).fill(-1);
+  const lanePts = [];
+  const ease = t => t * t * (3 - 2 * t);                     // smoothstep ramps
+  for (let k = PIT_ENTRY; k <= PIT_EXIT; k++) {
+    const i = ((k % N) + N) % N;
+    let o = PIT_OFF;
+    if (k < PIT_ENTRY + 10) o = PIT_OFF * ease((k - PIT_ENTRY) / 10);          // entry ramp
+    else if (k > PIT_EXIT - 10) o = PIT_OFF * ease((PIT_EXIT - k) / 10);       // exit ramp
+    off[i] = o;
+    const p = pts[i];
+    lanePts.push({ x: p.x + p.nx * PIT_SIDE * o, y: p.y + p.ny * PIT_SIDE * o, i, o });
+  }
+  const bp = pts[PIT_BOX];
+  return { off, lanePts, boxS: bp.s, boxX: bp.x + bp.nx * PIT_SIDE * PIT_OFF, boxY: bp.y + bp.ny * PIT_SIDE * PIT_OFF };
 }
 
 // Roadside scenery, generated once per track and stored as world-space billboards:
@@ -363,9 +398,10 @@ function buildScenery(pts, N) {
     const x = p.x + p.nx * side * (HALF_W + 3.4), y = p.y + p.ny * side * (HALF_W + 3.4);
     props.push({ t: 'tyres', x, y, seg: i, solid: true, cc: [{ x, y, r: 1.5 }] });
   }
-  // low pit wall framing the start/finish straight, in front of the grandstands
+  // low pit wall framing the start/finish straight, in front of the grandstands.
+  // Ends at k=12 so it never blocks the pit-exit merge ramp (idx 14..24).
   for (const side of [-1, 1]) {
-    for (let k = 2; k <= 18; k += 2) {
+    for (let k = 2; k <= 12; k += 2) {
       const p = pts[k % N], q = pts[(k + 2) % N], off = HALF_W + 1.8;
       const x1 = p.x + p.nx * side * off, y1 = p.y + p.ny * side * off;
       const x2 = q.x + q.nx * side * off, y2 = q.y + q.ny * side * off;
@@ -374,12 +410,18 @@ function buildScenery(pts, N) {
         cc: [{ x: (x1 + mx) / 2, y: (y1 + my) / 2, r: 1.2 }, { x: (x2 + mx) / 2, y: (y2 + my) / 2, r: 1.2 }] });
     }
   }
+  // pit-entry sign just before the lane peels off
+  {
+    const i = ((PIT_ENTRY - 3) % N + N) % N, p = pts[i];
+    const x = p.x + p.nx * PIT_SIDE * (HALF_W + 2.2), y = p.y + p.ny * PIT_SIDE * (HALF_W + 2.2);
+    props.push({ t: 'pitsign', x, y, seg: i, breakable: true, down: false, cc: [{ x, y, r: 1.0 }] });
+  }
   // grandstands flanking the pit straight (start/finish, around index 0) — solid wall,
   // approximated by three collision circles laid along the track tangent.
   for (const side of [-1, 1]) {
     for (let k = 0; k < 4; k++) {
       const idx = (3 + k * 5) % N, p = pts[idx], w = 16;
-      const x = p.x + p.nx * side * (HALF_W + 7), y = p.y + p.ny * side * (HALF_W + 7);
+      const x = p.x + p.nx * side * (HALF_W + 12), y = p.y + p.ny * side * (HALF_W + 12);   // set back clear of the pit lane
       const cc = [-0.33, 0, 0.33].map(f => ({ x: x + p.ux * w * f, y: y + p.uy * w * f, r: w * 0.22 }));
       props.push({ t: 'stand', x, y, seg: idx, solid: true, cc,
         w, h: 7, tx: p.ux, ty: p.uy, seed: (idx * 2654435761 + (side > 0 ? 17 : 91)) >>> 0 });
@@ -417,6 +459,10 @@ function querySurface(px, py, who) {
   let surf = 'grass';
   if (al <= HALF_W) surf = 'road';
   else if (al <= HALF_W + KERB_W) surf = 'kerb';
+  else if (track.pit) {                                // pit lane: asphalt corridor outside the wall
+    const o = track.pit.off[bi];
+    if (o > 0.5 && Math.abs(lat * PIT_SIDE - o) < 2.6) surf = 'pit';
+  }
   return { surf, lat, s: p.s, p };
 }
 
@@ -454,6 +500,9 @@ function step(car, input, dt) {
   let gripT = 1, resT = 1, drvT = 1;
   if (surf.surf === 'grass') { gripT = 0.62; resT = 4.5; drvT = 0.6; }   // slippery + draggy, and ease power so the rear doesn't instantly break loose -> still drivable back on
   else if (surf.surf === 'kerb') { gripT = 0.85; resT = 1.6; }
+  else if (surf.surf === 'pit') {                                        // pit-lane asphalt with an automatic speed limiter
+    gripT = 1; resT = vlong > PIT_SPEED ? 9 : 1.2; drvT = vlong > PIT_SPEED ? 0 : 0.8;
+  }
   car.sgrip += (gripT - car.sgrip) * Math.min(1, dt * 6);
   car.sres  += (resT  - car.sres ) * Math.min(1, dt * 6);
   car.sdrv  += (drvT  - car.sdrv ) * Math.min(1, dt * 6);
@@ -743,6 +792,7 @@ function render() {
   ctx.fillStyle = gr; ctx.fillRect(0, hz, W, H - hz);
   setupProjection();
   drawRoad();
+  drawPitLane();
   drawHaze(hz);
   drawScenery();
   drawMarksP();
@@ -771,8 +821,13 @@ function drawStartLights() {
   ctx.fillStyle = num === 1 ? '#ffd24a' : '#ff5a5f';
   ctx.font = '900 ' + Math.round(R * 3.4) + 'px system-ui, sans-serif';
   ctx.fillText(num, cx, cy + R * 1.4);
-  ctx.font = '700 ' + Math.round(R * 0.6) + 'px system-ui, sans-serif'; ctx.fillStyle = '#9fb0cf';
-  ctx.fillText('GET READY 準備', cx, cy + R * 3.2);
+  // "GET READY" on a dark pill so it stays readable over the bright chequer/checker zone
+  ctx.font = '700 ' + Math.round(R * 0.6) + 'px system-ui, sans-serif';
+  const gw = ctx.measureText('GET READY 準備').width;
+  ctx.fillStyle = 'rgba(6,9,15,.78)';
+  rrectP(cx - gw / 2 - R * 0.5, cy + R * 2.75, gw + R, R * 0.95, R * 0.24); ctx.fill();
+  ctx.fillStyle = '#ffd24a';
+  ctx.fillText('GET READY 準備', cx, cy + R * 3.24);
   ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
 }
 function drawGo() {
@@ -891,6 +946,44 @@ function drawRoad() {
                    { x: r1.x + r1.nx*t2, y: r1.y + r1.ny*t2 }, { x: r1.x + r1.nx*t1, y: r1.y + r1.ny*t1 }],
                   ((c + i + j) % 2) ? '#10131a' : '#eef2fb');
       }
+    }
+  }
+}
+// the pit lane: a narrower ribbon of asphalt easing off the main road, with edge lines,
+// a dashed limiter line, and the yellow stop box. Drawn after the road so the merge
+// ramps layer on top of the verge.
+function drawPitLane() {
+  const pit = track.pit; if (!pit) return;
+  const LP = pit.lanePts, HW = 2.4;
+  const FW = (x, y) => (x - _camx) * _cc + (y - _camy) * _ss;
+  for (let k = 0; k + 1 < LP.length; k++) {
+    const a = LP[k], b = LP[k + 1];
+    const fa = FW(a.x, a.y), fb = FW(b.x, b.y);
+    if ((fa < NEAR && fb < NEAR) || Math.min(fa, fb) > 420) continue;
+    const pa = track.pts[a.i], pb = track.pts[b.i];
+    const f = fogAt(Math.max(NEAR, Math.min(fa, fb)));
+    fillPolyW([{ x: a.x + pa.nx*HW, y: a.y + pa.ny*HW }, { x: a.x - pa.nx*HW, y: a.y - pa.ny*HW },
+               { x: b.x - pb.nx*HW, y: b.y - pb.ny*HW }, { x: b.x + pb.nx*HW, y: b.y + pb.ny*HW }],
+              fogBlend((k % 2) ? '#33363e' : '#383b44', f));
+    // outer edge line + inner dashed limiter line
+    const e1 = HW, e2 = HW - 0.4;
+    fillPolyW([{ x: a.x + pa.nx*e1, y: a.y + pa.ny*e1 }, { x: a.x + pa.nx*e2, y: a.y + pa.ny*e2 },
+               { x: b.x + pb.nx*e2, y: b.y + pb.ny*e2 }, { x: b.x + pb.nx*e1, y: b.y + pb.ny*e1 }],
+              'rgba(238,242,255,' + (0.6 * (1 - f * 0.85)).toFixed(3) + ')');
+    if (k % 2 === 0)
+      fillPolyW([{ x: a.x - pa.nx*e1, y: a.y - pa.ny*e1 }, { x: a.x - pa.nx*e2, y: a.y - pa.ny*e2 },
+                 { x: b.x - pb.nx*e2, y: b.y - pb.ny*e2 }, { x: b.x - pb.nx*e1, y: b.y - pb.ny*e1 }],
+                'rgba(255,210,74,' + (0.5 * (1 - f * 0.85)).toFixed(3) + ')');
+    // the stop box: yellow frame around the box segment
+    if (a.i === PIT_BOX) {
+      const bx = 1.9;
+      fillPolyW([{ x: a.x + pa.nx*bx, y: a.y + pa.ny*bx }, { x: a.x - pa.nx*bx, y: a.y - pa.ny*bx },
+                 { x: b.x - pb.nx*bx, y: b.y - pb.ny*bx }, { x: b.x + pb.nx*bx, y: b.y + pb.ny*bx }],
+                'rgba(255,210,74,.22)');
+      for (const [o1, o2] of [[bx, bx - 0.35], [-(bx - 0.35), -bx]])
+        fillPolyW([{ x: a.x + pa.nx*o1, y: a.y + pa.ny*o1 }, { x: a.x + pa.nx*o2, y: a.y + pa.ny*o2 },
+                   { x: b.x + pb.nx*o2, y: b.y + pb.ny*o2 }, { x: b.x + pb.nx*o1, y: b.y + pb.ny*o1 }],
+                  'rgba(255,210,74,.8)');
     }
   }
 }
@@ -1028,6 +1121,7 @@ function drawScenery() {
     if (o.t === 'tree') drawTree(o, p);
     else if (o.t === 'board') drawBoard(o, p);
     else if (o.t === 'marker') drawMarker(o, p);
+    else if (o.t === 'pitsign') drawPitSign(o, p);
     else if (o.t === 'gantry') drawGantry(o, p);
     else if (o.t === 'wall') drawWall(o, p);
     else if (o.t === 'tyres') drawTyres(o, p);
@@ -1098,6 +1192,21 @@ function drawGantry(o, p) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('APEX GP', (L.x + R.x) / 2, (yl + yr) / 2 - BT * (L.sc + R.sc) / 4);
     ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  }
+}
+// pit-entry board: yellow plate with "PIT" and an arrow toward the lane
+function drawPitSign(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, w = 2.2 * sc, h = 1.3 * sc, legH = 1.4 * sc;
+  if (h < 4 || x < -w || x > W + w) return;
+  const py = gy - legH - h;
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x, gy, w * 0.5, Math.max(1, w * 0.1), 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#3a3f48'; ctx.fillRect(x - Math.max(1, 0.1 * sc) / 2, gy - legH, Math.max(1, 0.1 * sc), legH);
+  ctx.fillStyle = '#ffd24a'; rrectP(x - w / 2, py, w, h, Math.min(3, w * 0.08)); ctx.fill();
+  if (h > 10) {
+    ctx.fillStyle = '#14171d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '900 ' + Math.max(6, h * 0.55) + 'px system-ui, sans-serif';
+    ctx.fillText('PIT →', x, py + h * 0.55);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 }
 function drawTree(o, p) {
@@ -1420,7 +1529,7 @@ function drawDash() {
 }
 // telemetry bars (top-left): ERS battery, fuel, tyre compound/wear/temp, DRS
 function drawTelemetry() {
-  const x = 14, w = 156; let y = 104;   // start below the P / LAP / BEST / track-name text block (ends ~y88)
+  const x = 14, w = 156; let y = 122;   // start below the P / LAP / BEST / sectors / track-name block (ends ~y106)
   const row = (label, frac, col, valTxt, glow) => {
     ctx.textAlign = 'left'; ctx.fillStyle = '#9fb0cf'; ctx.font = '600 10px system-ui, sans-serif'; ctx.fillText(label, x, y - 2);
     ctx.textAlign = 'right'; ctx.fillStyle = '#7f8ba6'; ctx.fillText(valTxt, x + w, y - 2); ctx.textAlign = 'left';
@@ -1442,9 +1551,14 @@ function drawTelemetry() {
   ctx.fillStyle = 'rgba(120,135,165,.22)'; rrectP(wx, y, ww, 7, 3); ctx.fill();
   ctx.fillStyle = lcol; rrectP(wx, y, ww * clamp(life, 0, 1), 7, 3); ctx.fill();
   y += 22;
-  // DRS pill (green when open)
+  // DRS pill (green when open) + the compound armed for the next pit stop (cycled with T)
   ctx.fillStyle = car.drs ? '#37d27a' : 'rgba(120,135,165,.18)'; rrectP(x, y, 46, 15, 4); ctx.fill();
   ctx.fillStyle = car.drs ? '#06210f' : '#8595b2'; ctx.font = '800 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('DRS', x + 23, y + 11); ctx.textAlign = 'left';
+  const nc = COMPOUNDS[nextCompound];
+  ctx.fillStyle = 'rgba(120,135,165,.18)'; rrectP(x + 52, y, 74, 15, 4); ctx.fill();
+  ctx.fillStyle = '#8595b2'; ctx.font = '700 9px system-ui, sans-serif'; ctx.fillText('PIT 胎', x + 58, y + 11);
+  ctx.fillStyle = nc.col; ctx.beginPath(); ctx.arc(x + 112, y + 7.5, 6, 0, 7); ctx.fill();
+  ctx.fillStyle = '#10131a'; ctx.font = '800 8px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(nc.key, x + 112, y + 10.5); ctx.textAlign = 'left';
 }
 function drawHud() {
   // top-left: lap count + best lap (the live lap time lives on the dash)
@@ -1452,11 +1566,38 @@ function drawHud() {
   ctx.fillStyle = '#eaf0ff'; ctx.font = '800 16px system-ui, sans-serif'; ctx.fillText('P' + racePosition() + ' / ' + allCars.length, 16, 30);
   ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + Math.max(1, lap) + (track.laps ? ' / ' + track.laps : ''), 16, 50);
   ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 70);
-  ctx.fillStyle = '#5a6a88'; ctx.font = '600 11px system-ui, sans-serif'; ctx.fillText('🏁 ' + (track.name || ''), 16, 88);
+  // sector splits: this lap's completed sectors, green when they're the session best
+  ctx.font = '600 11px system-ui, sans-serif';
+  for (let k = 0; k < 3; k++) {
+    const t = secTimes[k], isBest = t && bestSec[k] && t <= bestSec[k] + 1;
+    ctx.fillStyle = t ? (isBest ? '#46e0a0' : '#9fb0cf') : '#4a5878';
+    ctx.fillText('S' + (k + 1) + ' ' + (t ? (t / 1000).toFixed(2) : '--.-'), 16 + k * 58, 88);
+  }
+  // split-delta popup for ~2.5 s after each sector crossing
+  if (secFlash && perf - secFlash.t < 2500 && secFlash.delta) {
+    const d = secFlash.delta / 1000;
+    ctx.fillStyle = d <= 0 ? '#46e0a0' : '#ff5a5f'; ctx.font = '800 12px system-ui, sans-serif';
+    ctx.fillText((d <= 0 ? '' : '+') + d.toFixed(2), 16 + 3 * 58, 88);
+  }
+  ctx.fillStyle = '#5a6a88'; ctx.font = '600 11px system-ui, sans-serif'; ctx.fillText('🏁 ' + (track.name || ''), 16, 106);
   drawTelemetry();
   drawDash();
   drawLogo();
   drawMinimap();
+  // pit-lane UI: limiter banner while in the lane, wrench countdown while being serviced
+  if (pitStop > 0) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(6,9,15,.55)'; rrectP(W / 2 - 110, H * 0.24, 220, 64, 14); ctx.fill();
+    ctx.fillStyle = '#ffd24a'; ctx.font = '900 30px system-ui, sans-serif';
+    ctx.fillText('🔧 ' + Math.max(0, pitStop).toFixed(1), W / 2, H * 0.24 + 42);
+    ctx.textAlign = 'left';
+  } else if (pitLaneNow) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,210,74,.92)'; rrectP(W / 2 - 92, 14, 184, 26, 8); ctx.fill();
+    ctx.fillStyle = '#14171d'; ctx.font = '800 13px system-ui, sans-serif';
+    ctx.fillText('PIT LANE · 限速 90', W / 2, 32);
+    ctx.textAlign = 'left';
+  }
 }
 // sponsor decal on the dark cockpit, just left of the instrument binnacle. Sized to the gap
 // between the binnacle and the bottom-left steering buttons, so it scales down on narrow
@@ -1608,11 +1749,28 @@ function sceneryCollide(c) {
   }
 }
 // advance one car's arc-position; bump its lap on crossing the line. The player also drives lap timing + best.
+// a sector split just completed: record it, compare to the session best, flash the delta
+function sectorDone(k) {
+  const t = perf - secStart;
+  secTimes[k] = t;
+  const prev = bestSec[k];
+  secFlash = { i: k, delta: prev ? t - prev : 0, t: perf };
+  if (!prev || t < prev) bestSec[k] = t;
+  secStart = perf; curSec = (k + 1) % 3;
+}
 function updateProgress(c, isPlayer) {
   const s = querySurface(c.x, c.y, c).s; c.s = s;
+  if (isPlayer && c.lap >= 1) {                                      // sector splits at 1/3 and 2/3 distance
+    const B1 = track.total / 3, B2 = track.total * 2 / 3;
+    if (curSec === 0 && c.lastS < B1 && s >= B1) sectorDone(0);
+    else if (curSec === 1 && c.lastS < B2 && s >= B2) sectorDone(1);
+  }
   if (c.lastS > track.total * 0.7 && s < track.total * 0.25) {       // crossed the start/finish line
     c.lap++;                                                          // 0 -> 1 is the start; 1 -> 2.. complete laps
     if (isPlayer) {
+      if (c.lap >= 2) sectorDone(2);                    // the line is the S3 split (skip the grid->line dash)
+      else { curSec = 0; secStart = perf; }
+      secTimes = [0, 0, 0];                             // fresh row for the new lap (the S3 delta lives on in secFlash)
       if (c.lap >= 2 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
       lap = c.lap; lapStart = perf; lapNow = 0;
       respawnScenery();                                 // stand the knocked-down hoardings back up each lap
@@ -1622,6 +1780,28 @@ function updateProgress(c, isPlayer) {
     if (!finished && c.lap > track.laps) finishRace();
   }
   c.lastS = s;
+}
+// player pit-stop state machine: detect the lane, hold the car in the box for PIT_TIME
+// while the crew works, bolt on the selected compound, release
+function updatePit(dt) {
+  const pit = track.pit; if (!pit) return;
+  if (pitStop > 0) {
+    car.vx = car.vy = car.av = 0;                       // car on the jacks, crew working
+    pitStop -= dt;
+    if (pitStop <= 0) {
+      pitStop = 0;
+      car.tyre.compound = nextCompound;
+      car.tyre.wear = 0; car.tyre.temp = 80;
+      pitDone = true;                                   // no double-service until we leave the box
+    }
+    return;
+  }
+  const q = querySurface(car.x, car.y, car);
+  const o = pit.off[car.nearIdx];
+  pitLaneNow = o > 0.5 && Math.abs(q.lat) > HALF_W && Math.abs(q.lat * PIT_SIDE - o) < 2.6;
+  const nearBox = Math.abs(q.s - pit.boxS) < 5;
+  if (pitLaneNow && nearBox && !pitDone && Math.hypot(car.vx, car.vy) < 2.5) pitStop = PIT_TIME;
+  if (!nearBox) pitDone = false;
 }
 function finishRace() {
   finished = true;
@@ -1689,6 +1869,7 @@ function loop(t) {
       // lap timing + progress for every car
       lapNow = perf - lapStart;
       updateProgress(car, true);
+      updatePit(dt);
       for (const a of aiCars) updateProgress(a, false);
       recordTelemetry(dt);
     }
@@ -1773,6 +1954,8 @@ function beginRace() {
   countdown = 3.2; finished = false; standings = null;
   telemetry = [];                                    // fresh trace each race
   respawnScenery();                                  // all hoardings standing at the start
+  resetSectors(); bestSec = [0, 0, 0];               // sector bests are per race session
+  pitStop = 0; pitDone = false; pitLaneNow = false; nextCompound = car.tyre.compound;
 }
 function startGame() {
   beginRace();
@@ -1790,9 +1973,10 @@ $('#bPause').addEventListener('click', togglePause);
 $('#bTelem').addEventListener('click', exportTelemetry);
 
 function cycleTyre() {
-  const i = COMPOUND_ORDER.indexOf(car.tyre.compound);
-  car.tyre.compound = COMPOUND_ORDER[(i + 1) % COMPOUND_ORDER.length];
-  car.tyre.wear = 0; car.tyre.temp = 80;        // bolt on a fresh set
+  // T no longer swaps tyres on the spot — it picks the compound for the NEXT pit stop.
+  // The actual change happens stationary in the pit box (see updatePit).
+  const i = COMPOUND_ORDER.indexOf(nextCompound);
+  nextCompound = COMPOUND_ORDER[(i + 1) % COMPOUND_ORDER.length];
 }
 const keymap = { ArrowUp:'gas', w:'gas', W:'gas', ArrowDown:'brake', s:'brake', S:'brake', ArrowLeft:'left', a:'left', A:'left', ArrowRight:'right', d:'right', D:'right', ' ':'hand', Shift:'boost', f:'drs', F:'drs' };
 addEventListener('keydown', e => {
