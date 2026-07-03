@@ -1047,6 +1047,15 @@ function drawStand(o, p) {
   // sloped terrace
   ctx.fillStyle = '#8b93a2'; ctx.beginPath();
   ctx.moveTo(x0, gy); ctx.lineTo(x0 + w, gy); ctx.lineTo(x0 + w, top + h * 0.55); ctx.lineTo(x0, top + h * 0.25); ctx.closePath(); ctx.fill();
+  // concrete plinth along the base, with panel seams — the stand sits on a foundation
+  // instead of the crowd speckle bleeding straight into the grass
+  const plinthH = Math.max(2, h * 0.11);
+  ctx.fillStyle = '#5c626e'; ctx.fillRect(x0, gy - plinthH, w, plinthH);
+  ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(x0, gy - plinthH, w, Math.max(1, plinthH * 0.18));
+  if (w > 40) {
+    ctx.fillStyle = 'rgba(10,12,18,.30)';
+    for (let k = 1; k < 6; k++) ctx.fillRect(x0 + (w * k) / 6, gy - plinthH, Math.max(1, sc * 0.03), plinthH);
+  }
   // speckled crowd — mostly a muted warm-grey mass with the occasional colour pop, so it reads
   // as a packed stand of people rather than confetti. Dense + small dots = fine texture, not scatter.
   const NEUT = ['#b9b2a4', '#a2988a', '#cbc4b6', '#8d94a0', '#9a9384'];   // skin / clothing greys (dominant)
@@ -1075,6 +1084,19 @@ function drawStand(o, p) {
       ctx.lineTo(x0 + w, (top + h * 0.55) + (gy - (top + h * 0.55)) * t);
       ctx.stroke();
     }
+  }
+  // roof support columns, planted on the terrace slope in front of the crowd,
+  // plus end-frames at both edges — the steelwork that makes it a BUILDING
+  if (h > 10) {
+    const colW = Math.max(1, sc * 0.10);
+    ctx.fillStyle = '#3a404c';
+    for (const u of [0.06, 0.5, 0.94]) {
+      const cxp = x0 + u * w, footY = top + h * 0.25 + h * 0.30 * u;
+      ctx.fillRect(cxp - colW / 2, top + h * 0.12, colW, footY - (top + h * 0.12));
+    }
+    ctx.fillStyle = '#2e333d';
+    ctx.fillRect(x0 - colW / 2, top + h * 0.12, colW, gy - (top + h * 0.12));           // left end-frame
+    ctx.fillRect(x0 + w - colW / 2, top + h * 0.12, colW, gy - (top + h * 0.12));       // right end-frame
   }
   // roof canopy (warm-lit by the low sun) + shaded lip
   ctx.fillStyle = '#e7ddca'; ctx.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
@@ -1155,17 +1177,6 @@ function drawWheel() {
   ctx.fillStyle = '#15191f';
   rrectP(-R * 0.42, -R * 0.10, R * 0.84, R * 0.20, R * 0.06); ctx.fill();            // horizontal spoke
   rrectP(-R * 0.30, -R * 0.40, R * 0.60, R * 0.62, R * 0.10); ctx.fill();            // hub plate
-  // shift LEDs across the top of the hub — light up with RPM (green -> amber -> red),
-  // all flashing red past the redline, like a real F1 wheel
-  const { rpm: wrpm } = revInfo();
-  const redFlash = wrpm > 0.93 && Math.floor(perf / 70) % 2 === 0;
-  const lit = Math.round(wrpm * 9);
-  for (let i = 0; i < 9; i++) {
-    const col = i < 4 ? '#46e0a0' : i < 7 ? '#ffd24a' : '#ff4d4d';
-    const on = redFlash || i < lit;
-    ctx.fillStyle = on ? (redFlash ? '#ff4d4d' : col) : 'rgba(120,130,150,.22)';
-    ctx.beginPath(); ctx.arc(-R * 0.24 + i * R * 0.06, -R * 0.30, R * 0.022, 0, 7); ctx.fill();
-  }
   // top-centre marker drawn ON the rim (12 o'clock band, like a real F1 wheel) so the steering angle reads clearly
   ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = R * 0.145; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.arc(0, 0, R, Math.PI * 1.46, Math.PI * 1.54); ctx.stroke();
@@ -1215,15 +1226,24 @@ function drawDash() {
   lastDash = { x0, y0, pw, ph };
   ctx.fillStyle = 'rgba(9,12,19,.85)'; rrectP(x0, y0, pw, ph, 16); ctx.fill();
   ctx.strokeStyle = 'rgba(140,160,200,.12)'; ctx.lineWidth = 1.5; rrectP(x0 + 0.8, y0 + 0.8, pw - 1.6, ph - 1.6, 15); ctx.stroke();
-  // RPM tach — segmented bar, green -> amber -> red, flashing past the redline
-  const seg = 26, bx = x0 + 28, bw = pw - 56, by = y0 + 13, bh = 11, cw = bw / seg;
+  // shift lights — a strip of round LEDs across the top of the binnacle, F1-wheel style:
+  // 5 green -> 5 red -> 5 purple lighting left to right with RPM, ALL flashing past the
+  // redline. Replaces the old rectangular segment bar (same row, same footprint).
+  const seg = 15, bx = x0 + 28, bw = pw - 56, by = y0 + 13, bh = 11, cw = bw / seg;
   const flash = rpm > 0.93 && Math.floor(perf / 70) % 2 === 0;
+  const ledR = Math.min(bh / 2 + 1, cw / 2 - 1.5);
   for (let i = 0; i < seg; i++) {
     const f = i / (seg - 1), on = rpm >= f - 1e-9;
-    let col = f < 0.55 ? '#37d27a' : f < 0.82 ? '#ffd24a' : '#ff4d4d';
+    let col = i < 5 ? '#37d27a' : i < 10 ? '#ff4d4d' : '#8f7bff';
     if (flash) col = '#ff5a5f';
+    const lx = bx + cw * (i + 0.5), ly = by + bh / 2;
     ctx.fillStyle = (on || flash) ? col : 'rgba(150,165,195,.14)';
-    ctx.fillRect(bx + cw * i, by, cw - 2, bh);
+    ctx.beginPath(); ctx.arc(lx, ly, ledR, 0, 7); ctx.fill();
+    if (on || flash) {                                   // soft glow so lit LEDs pop at a glance
+      ctx.globalAlpha = 0.30;
+      ctx.beginPath(); ctx.arc(lx, ly, ledR * 1.9, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(159,176,207,.6)'; ctx.font = '600 9px system-ui, sans-serif';
   ctx.fillText('RPM', x0 + 14, by + 10);
