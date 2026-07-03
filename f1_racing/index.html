@@ -319,6 +319,7 @@ function buildScenery(pts, N) {
         const off = HALF_W + 5 + Math.random() * 45;
         const x = p.x + p.nx * side * off, y = p.y + p.ny * side * off;
         props.push({ t: 'tree', x, y, seg: i, solid: true, cc: [{ x, y, r: 1.15 }],
+          kind: Math.random() < 0.3 ? 'pine' : 'round',   // two silhouettes so the treeline isn't a row of identical lollipops
           h: 4.5 + Math.random() * 7, r: 1.6 + Math.random() * 1.9,
           col: TREE_COL[(Math.random() * TREE_COL.length) | 0] });
       }
@@ -331,6 +332,29 @@ function buildScenery(pts, N) {
         col: BOARD_COL[((i / 22) | 0) % BOARD_COL.length] });
     }
   }
+  // braking-distance boards (100m / 50m) on the run-in to every proper corner, placed on
+  // the OUTSIDE of the turn (where the braking zone is). "Proper corner" is judged RELATIVE
+  // to this track's own curvature distribution — a fixed threshold marks half of Hairpin
+  // Park and nothing at all on flowing Velocity.
+  const spacing = pts[2].s - pts[1].s || 6;                 // ~metres between centreline points
+  const med = pts.map(p => Math.abs(p.curv)).sort((a, b) => a - b)[N >> 1];
+  const thr = Math.max(0.04, med * 1.5);                    // corner = clearly tighter than the typical point
+  let lastEntry = -1e9;
+  for (let i = 0; i < N; i++) {
+    const c0 = Math.abs(pts[i].curv), cPrev = Math.abs(pts[(i - 4 + N) % N].curv);
+    let ahead = 0; for (let k = 0; k < 6; k++) ahead += Math.abs(pts[(i + k) % N].curv);
+    if (c0 > thr && cPrev < thr * 0.7 && ahead > thr * 4.5 && i - lastEntry > 30) {
+      lastEntry = i;
+      const side = pts[i].curv > 0 ? -1 : 1;                // outside of the corner
+      for (const d of [50, 100]) {
+        const ib = ((i - Math.round(d / spacing)) % N + N) % N, p = pts[ib];
+        if (Math.abs(p.curv) > thr * 0.9) continue;         // don't plant a board mid-corner
+        const x = p.x + p.nx * side * (HALF_W + 2.0), y = p.y + p.ny * side * (HALF_W + 2.0);
+        props.push({ t: 'marker', x, y, seg: ib, breakable: true, down: false, num: d,
+          cc: [{ x, y, r: 1.1 }] });
+      }
+    }
+  }
   // grandstands flanking the pit straight (start/finish, around index 0) — solid wall,
   // approximated by three collision circles laid along the track tangent.
   for (const side of [-1, 1]) {
@@ -341,6 +365,13 @@ function buildScenery(pts, N) {
       props.push({ t: 'stand', x, y, seg: idx, solid: true, cc,
         w, h: 7, seed: (idx * 2654435761 + (side > 0 ? 17 : 91)) >>> 0 });
     }
+  }
+  // start/finish gantry spanning the road just past the line
+  {
+    const p = pts[1], off = HALF_W + 1.2;
+    const lx = p.x + p.nx * off, ly = p.y + p.ny * off, rx = p.x - p.nx * off, ry = p.y - p.ny * off;
+    props.push({ t: 'gantry', x: p.x, y: p.y, seg: 1, lx, ly, rx, ry, solid: true,
+      cc: [{ x: lx, y: ly, r: 0.7 }, { x: rx, y: ry, r: 0.7 }] });
   }
   return props;
 }
@@ -679,13 +710,21 @@ function poly4(a, b, c, d, fill) { ctx.fillStyle = fill; ctx.beginPath(); ctx.mo
 function render() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const hz = H * HORIZON;
+  // golden-hour sky: deep dusk blue overhead melting into a warm glow at the horizon.
+  // Every other outdoor colour (fog, hills, haze band) keys off this palette so the
+  // whole scene reads as ONE time of day instead of mismatched layers.
   let sky = ctx.createLinearGradient(0, 0, 0, hz);
-  sky.addColorStop(0, '#16203a'); sky.addColorStop(1, '#46597c'); ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+  sky.addColorStop(0, '#141e3c'); sky.addColorStop(0.55, '#3b4f76'); sky.addColorStop(0.85, '#8a6a72'); sky.addColorStop(1, '#d99a63');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 1);
+  drawSun(hz);
+  drawClouds(hz);
   drawHills(hz);
   let gr = ctx.createLinearGradient(0, hz, 0, H);
-  gr.addColorStop(0, '#33532e'); gr.addColorStop(1, '#22401c'); ctx.fillStyle = gr; ctx.fillRect(0, hz, W, H - hz);
+  gr.addColorStop(0, '#4d5a43'); gr.addColorStop(0.12, '#2f4c29'); gr.addColorStop(1, '#20361b');
+  ctx.fillStyle = gr; ctx.fillRect(0, hz, W, H - hz);
   setupProjection();
   drawRoad();
+  drawHaze(hz);
   drawScenery();
   drawMarksP();
   drawCars();
@@ -774,22 +813,43 @@ function drawRoad() {
   quads.sort((p, q) => q.fwd - p.fwd);            // far -> near (painter's order)
   for (const q of quads) {
     const { r0, r1, i, j } = q, HL = HALF_W;
+    const f = fogAt(q.fwd), band = Math.floor(i / 4) % 2, gband = Math.floor(i / 2) % 2;
+    // mowed-grass stripes flanking the road: alternating light/dark bands keyed to the same
+    // segment banding as the asphalt, so they recede with perspective. This is what turns the
+    // flat green plane into a groomed circuit verge. On the INSIDE of a corner the ribs' normals
+    // converge, so the stripe is clamped to ~0.8× the local turn radius to stop it folding over.
+    const g1 = HALF_W + KERB_W, curv = pts[i].curv;
+    for (const side of [-1, 1]) {
+      let ext = 70;
+      if (curv * side > 0.02) ext = Math.min(ext, 4.8 / Math.abs(curv));
+      const g2 = g1 + ext;
+      fillPolyW([{ x: r0.x + r0.nx*side*g1, y: r0.y + r0.ny*side*g1 }, { x: r0.x + r0.nx*side*g2, y: r0.y + r0.ny*side*g2 },
+                 { x: r1.x + r1.nx*side*g2, y: r1.y + r1.ny*side*g2 }, { x: r1.x + r1.nx*side*g1, y: r1.y + r1.ny*side*g1 }],
+                fogBlend(gband ? '#2a441f' : '#446839', f));
+    }
     // asphalt (subtle banding)
     fillPolyW([{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL },
                { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }],
-              (Math.floor(i/4)%2) ? '#2b2e35' : '#31343c');
+              fogBlend(band ? '#2b2e35' : '#31343c', f));
+    // rubbered-in racing groove: a soft dark band down the middle of the lap-worn surface
+    if (f < 0.7) {
+      const ro = HL * 0.38;
+      fillPolyW([{ x: r0.x + r0.nx*ro, y: r0.y + r0.ny*ro }, { x: r0.x - r0.nx*ro, y: r0.y - r0.ny*ro },
+                 { x: r1.x - r1.nx*ro, y: r1.y - r1.ny*ro }, { x: r1.x + r1.nx*ro, y: r1.y + r1.ny*ro }],
+                'rgba(14,15,18,' + (0.20 * (1 - f)).toFixed(3) + ')');
+    }
     // white edge lines
-    const eo = HALF_W - 0.55;
+    const eo = HALF_W - 0.55, edge = 'rgba(238,242,255,' + (0.8 * (1 - f * 0.85)).toFixed(3) + ')';
     fillPolyW([{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL }, { x: r0.x + r0.nx*eo, y: r0.y + r0.ny*eo },
-               { x: r1.x + r1.nx*eo, y: r1.y + r1.ny*eo }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }], 'rgba(238,242,255,.8)');
+               { x: r1.x + r1.nx*eo, y: r1.y + r1.ny*eo }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }], edge);
     fillPolyW([{ x: r0.x - r0.nx*eo, y: r0.y - r0.ny*eo }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL },
-               { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x - r1.nx*eo, y: r1.y - r1.ny*eo }], 'rgba(238,242,255,.8)');
+               { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x - r1.nx*eo, y: r1.y - r1.ny*eo }], edge);
     // kerbs on the inside of corners
     if (Math.abs(pts[i].curv) > 0.02) {
       const side = pts[i].curv > 0 ? 1 : -1, o1 = HALF_W, o2 = HALF_W + KERB_W;
       fillPolyW([{ x: r0.x + r0.nx*side*o1, y: r0.y + r0.ny*side*o1 }, { x: r0.x + r0.nx*side*o2, y: r0.y + r0.ny*side*o2 },
                  { x: r1.x + r1.nx*side*o2, y: r1.y + r1.ny*side*o2 }, { x: r1.x + r1.nx*side*o1, y: r1.y + r1.ny*side*o1 }],
-                ((i + j) % 2) ? '#e23b3b' : '#eef2fb');
+                fogBlend(((i + j) % 2) ? '#e23b3b' : '#eef2fb', f));
     }
     // start/finish checker
     if (i < 2) {
@@ -810,12 +870,72 @@ function drawSmokeP() {
   for (const sm of smoke) { const p = project(sm.x, sm.y); if (!p) continue; ctx.globalAlpha = sm.life * 0.4; ctx.fillStyle = '#dde2ec'; const r = Math.min(70, p.sc * sm.sz); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1;
 }
+// ----- atmosphere: everything fades toward the horizon-glow colour with distance -----
+// FOG_RGB matches the sky gradient's horizon stop, so fogged geometry melts INTO the sky
+// instead of ending at a hard silhouette line (the old paper-cutout horizon).
+const FOG_RGB = [217, 154, 99];
+const _fogCache = new Map();                       // '#rrggbb'+step -> blended 'rgb()' (few dozen entries)
+function fogAt(fwd) { return Math.max(0, Math.min(1, (fwd - 70) / 260)); }
+function fogBlend(hex, f) {
+  const q = Math.round(f * 10); if (q <= 0) return hex;
+  const key = hex + q; let c = _fogCache.get(key);
+  if (!c) {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16), t = (q / 10) * 0.85;
+    c = 'rgb(' + Math.round(r + (FOG_RGB[0] - r) * t) + ',' + Math.round(g + (FOG_RGB[1] - g) * t) + ',' + Math.round(b + (FOG_RGB[2] - b) * t) + ')';
+    _fogCache.set(key, c);
+  }
+  return c;
+}
+// screen-space haze band straddling the horizon line. Drawn AFTER the road but BEFORE
+// scenery/cars (near trees tower across the horizon and must not get a tint stripe).
+// Below the horizon the ground compresses fast (fwd ~ 1/(y-hz)), so the band is thin there.
+function drawHaze(hz) {
+  const up = H * 0.075, down = H * 0.035;
+  let g = ctx.createLinearGradient(0, hz - up, 0, hz + down);
+  g.addColorStop(0, 'rgba(217,154,99,0)'); g.addColorStop(0.68, 'rgba(217,154,99,.5)'); g.addColorStop(1, 'rgba(217,154,99,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, hz - up, W, up + down);
+}
+// low evening sun: a broad glow + bright core sitting just above the horizon. It holds a
+// fixed compass bearing, so it slides with camYaw like the hills — the world has a "west".
+const SUN_AZ = 0.9;
+function drawSun(hz) {
+  let dA = SUN_AZ - camYaw; while (dA > Math.PI) dA -= 2 * Math.PI; while (dA < -Math.PI) dA += 2 * Math.PI;
+  const x = W / 2 + dA * W * 0.42, y = hz * 0.88, R = H * 0.30;
+  if (x < -R || x > W + R) return;
+  let g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0, 'rgba(255,214,150,.55)'); g.addColorStop(0.35, 'rgba(255,190,120,.22)'); g.addColorStop(1, 'rgba(255,190,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2);
+  ctx.fillStyle = 'rgba(255,238,205,.9)'; ctx.beginPath(); ctx.arc(x, y, H * 0.028, 0, 7); ctx.fill();
+}
+// a few flat cloud streaks: dark stratus up high, warm underlit wisps near the glow.
+// Fixed bearings + per-layer parallax speeds — they drift as the car turns, adding sky depth.
+const CLOUDS = [
+  { az: -1.6, ty: 0.22, w: 0.26, h: 0.014, col: '30,44,78',    a: 0.28, sp: 0.30 },
+  { az:  0.2, ty: 0.16, w: 0.20, h: 0.011, col: '30,44,78',    a: 0.24, sp: 0.28 },
+  { az:  2.4, ty: 0.30, w: 0.30, h: 0.015, col: '44,56,92',    a: 0.26, sp: 0.34 },
+  { az:  0.7, ty: 0.62, w: 0.26, h: 0.010, col: '243,196,146', a: 0.30, sp: 0.42 },
+  { az:  1.3, ty: 0.72, w: 0.20, h: 0.008, col: '243,196,146', a: 0.26, sp: 0.46 },
+  { az: -2.6, ty: 0.68, w: 0.28, h: 0.009, col: '238,182,132', a: 0.28, sp: 0.44 },
+];
+function drawClouds(hz) {
+  for (const c of CLOUDS) {
+    let dA = c.az - camYaw * c.sp * 3; while (dA > Math.PI) dA -= 2 * Math.PI; while (dA < -Math.PI) dA += 2 * Math.PI;
+    const x = W / 2 + dA * W * 0.42, y = hz * c.ty, w = c.w * W, h = Math.max(3, c.h * H);
+    if (x < -w || x > W + w) continue;
+    ctx.fillStyle = 'rgba(' + c.col + ',' + c.a + ')';
+    // three overlapping lobes, tucked in tight so they merge into one soft streak
+    ctx.beginPath(); ctx.ellipse(x, y, w * 0.5, h, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x - w * 0.30, y + h * 0.15, w * 0.26, h * 0.8, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + w * 0.32, y + h * 0.10, w * 0.24, h * 0.75, 0, 0, 7); ctx.fill();
+  }
+}
 // layered distant mountains on the horizon. They slide as the car's heading changes
 // (parallax keyed to camYaw), giving the world a sense of rotation beyond the track.
+// Hazy mauve-blues (not saturated teal) so they sit believably behind the warm haze band.
 function drawHills(hz) {
   const layers = [
-    { col: '#2c4456', h: hz * 0.26, f: 0.0055, sp: 70,  ph: 0.0 },
-    { col: '#395a6e', h: hz * 0.16, f: 0.0105, sp: 130, ph: 2.1 },
+    { col: '#8d7d90', h: hz * 0.26, f: 0.0055, sp: 70,  ph: 0.0 },
+    { col: '#635d7e', h: hz * 0.16, f: 0.0105, sp: 130, ph: 2.1 },
   ];
   for (const L of layers) {
     const shift = camYaw * L.sp;
@@ -835,9 +955,56 @@ function drawScenery() {
   for (const o of track.scenery) { if (o.down) continue; const p = project(o.x, o.y); if (p && p.fwd < 360) list.push({ o, p }); }
   list.sort((a, b) => b.p.fwd - a.p.fwd);
   for (const { o, p } of list) {
+    // fade props in over the last stretch of draw distance, so they emerge from the haze
+    // instead of popping into existence at the cull line
+    ctx.globalAlpha = Math.max(0, Math.min(1, (360 - p.fwd) / 110));
     if (o.t === 'tree') drawTree(o, p);
     else if (o.t === 'board') drawBoard(o, p);
+    else if (o.t === 'marker') drawMarker(o, p);
+    else if (o.t === 'gantry') drawGantry(o, p);
     else drawStand(o, p);
+  }
+  ctx.globalAlpha = 1;
+}
+// braking-distance board: white plate, red cap band, big black metres count — the classic
+// trackside cue for where to brake. Doubles as a gameplay aid on corner approach.
+function drawMarker(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, w = 1.9 * sc, h = 1.5 * sc, legH = 1.1 * sc;
+  if (h < 4 || x < -w || x > W + w) return;
+  const py = gy - legH - h;
+  ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x, gy, w * 0.5, Math.max(1, w * 0.1), 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#3a3f48'; ctx.fillRect(x - Math.max(1, 0.1 * sc) / 2, gy - legH, Math.max(1, 0.1 * sc), legH);
+  ctx.fillStyle = '#eef2fb'; rrectP(x - w / 2, py, w, h, Math.min(3, w * 0.08)); ctx.fill();
+  ctx.fillStyle = '#d43b3b'; ctx.fillRect(x - w / 2, py, w, h * 0.24);
+  if (h > 11) {
+    ctx.fillStyle = '#14171d'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '900 ' + Math.max(6, h * 0.52) + 'px system-ui, sans-serif';
+    ctx.fillText(o.num, x, py + h * 0.62);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+}
+// start/finish gantry: two pillars and a dark beam spanning the road, APEX GP branding.
+// Pillar bases are ground-projected; heights rise in metres scaled by each base's own
+// pixels-per-metre, so perspective stays correct as you drive at (and under) it.
+function drawGantry(o, p) {
+  const L = project(o.lx, o.ly), R = project(o.rx, o.ry);
+  if (!L || !R) return;                                     // passing under / behind — gone this frame
+  const GH = 7.5, BT = 1.4;                                 // clearance + beam thickness (metres)
+  const pw = Math.max(2, 0.45 * (L.sc + R.sc) / 2);
+  ctx.fillStyle = '#2c313a';
+  ctx.fillRect(L.x - pw / 2, L.y - GH * L.sc, pw, GH * L.sc);
+  ctx.fillRect(R.x - pw / 2, R.y - GH * R.sc, pw, GH * R.sc);
+  const yl = L.y - GH * L.sc, yr = R.y - GH * R.sc;         // beam underside at each pillar
+  ctx.fillStyle = '#191d24'; ctx.beginPath();
+  ctx.moveTo(L.x, yl - BT * L.sc); ctx.lineTo(R.x, yr - BT * R.sc);
+  ctx.lineTo(R.x, yr); ctx.lineTo(L.x, yl); ctx.closePath(); ctx.fill();
+  const bw = Math.abs(R.x - L.x);
+  if (bw > 70) {
+    const fs = Math.max(7, BT * (L.sc + R.sc) / 2 * 0.5);
+    ctx.fillStyle = '#eef2ff'; ctx.font = '800 ' + fs + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('APEX GP', (L.x + R.x) / 2, (yl + yr) / 2 - BT * (L.sc + R.sc) / 4);
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
   }
 }
 function drawTree(o, p) {
@@ -847,10 +1014,20 @@ function drawTree(o, p) {
   ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(x, gy, cr * 0.9, Math.max(1, cr * 0.22), 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#5b3f29'; ctx.fillRect(x - trunkW / 2, gy - trunkH, trunkW, trunkH);
   ctx.fillStyle = o.col;
+  if (o.kind === 'pine') {
+    // conifer: three stacked fronds tapering to a tip
+    for (let k = 0; k < 3; k++) {
+      const fw = cr * (1.25 - k * 0.32), fy = gy - trunkH - (h - trunkH) * (k / 3), fh = (h - trunkH) * 0.52;
+      ctx.beginPath(); ctx.moveTo(x, fy - fh); ctx.lineTo(x - fw, fy); ctx.lineTo(x + fw, fy); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,220,170,.10)';                 // low-sun rim light on the tip
+    ctx.beginPath(); ctx.moveTo(x, gy - h); ctx.lineTo(x - cr * 0.3, gy - h * 0.72); ctx.lineTo(x + cr * 0.3, gy - h * 0.72); ctx.closePath(); ctx.fill();
+    return;
+  }
   ctx.beginPath(); ctx.arc(x, cy, cr, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.arc(x - cr * 0.62, cy + cr * 0.32, cr * 0.74, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.arc(x + cr * 0.62, cy + cr * 0.32, cr * 0.74, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.beginPath(); ctx.arc(x - cr * 0.34, cy - cr * 0.36, cr * 0.46, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,220,170,.12)'; ctx.beginPath(); ctx.arc(x - cr * 0.34, cy - cr * 0.36, cr * 0.46, 0, 7); ctx.fill();
 }
 function drawBoard(o, p) {
   const sc = p.sc, x = p.x, gy = p.y, w = 6 * sc, h = 3 * sc, legH = 2.2 * sc;
@@ -887,8 +1064,20 @@ function drawStand(o, p) {
     ctx.fillStyle = rnd() < 0.78 ? NEUT[(rnd() * NEUT.length) | 0] : POP[(rnd() * POP.length) | 0];
     ctx.fillRect(px, pyd, dw, dh);
   }
-  // roof canopy + shaded lip
-  ctx.fillStyle = '#dde3ed'; ctx.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
+  // terrace step-lines over the crowd — the horizontal structure that makes the speckle
+  // read as seated ROWS instead of static noise
+  if (h > 14) {
+    ctx.strokeStyle = 'rgba(10,12,18,.20)'; ctx.lineWidth = Math.max(1, sc * 0.045);
+    for (let r = 2; r < rows; r += 2) {
+      const t = r / rows;
+      ctx.beginPath();
+      ctx.moveTo(x0, (top + h * 0.25) + (gy - (top + h * 0.25)) * t);
+      ctx.lineTo(x0 + w, (top + h * 0.55) + (gy - (top + h * 0.55)) * t);
+      ctx.stroke();
+    }
+  }
+  // roof canopy (warm-lit by the low sun) + shaded lip
+  ctx.fillStyle = '#e7ddca'; ctx.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
   ctx.fillStyle = 'rgba(0,0,0,.20)'; ctx.fillRect(x0 - w * 0.04, top + h * 0.16, w * 1.08, Math.max(1, h * 0.035));
 }
 // rival cars as ground-anchored billboards: project each to its tyre-contact point and scale by
@@ -897,7 +1086,11 @@ function drawCars() {
   const list = [];
   for (const c of aiCars) { const p = project(c.x, c.y); if (p && p.fwd < 280) list.push({ c, p }); }
   list.sort((a, b) => b.p.fwd - a.p.fwd);
-  for (const { c, p } of list) drawCarSprite(c, p);
+  for (const { c, p } of list) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, (280 - p.fwd) / 70));   // emerge from the haze, no pop-in
+    drawCarSprite(c, p);
+  }
+  ctx.globalAlpha = 1;
 }
 // rear-3/4 view of an open-wheeler: fat rear tyres, tapered engine cover, central fin and a wide
 // rear wing with endplates, painted in the car's livery so each rival reads as its real-life team.
@@ -962,9 +1155,15 @@ function drawWheel() {
   ctx.fillStyle = '#15191f';
   rrectP(-R * 0.42, -R * 0.10, R * 0.84, R * 0.20, R * 0.06); ctx.fill();            // horizontal spoke
   rrectP(-R * 0.30, -R * 0.40, R * 0.60, R * 0.62, R * 0.10); ctx.fill();            // hub plate
-  // shift LEDs across the top of the hub
+  // shift LEDs across the top of the hub — light up with RPM (green -> amber -> red),
+  // all flashing red past the redline, like a real F1 wheel
+  const { rpm: wrpm } = revInfo();
+  const redFlash = wrpm > 0.93 && Math.floor(perf / 70) % 2 === 0;
+  const lit = Math.round(wrpm * 9);
   for (let i = 0; i < 9; i++) {
-    ctx.fillStyle = i < 4 ? '#46e0a0' : i < 7 ? '#ffd24a' : '#ff4d4d';
+    const col = i < 4 ? '#46e0a0' : i < 7 ? '#ffd24a' : '#ff4d4d';
+    const on = redFlash || i < lit;
+    ctx.fillStyle = on ? (redFlash ? '#ff4d4d' : col) : 'rgba(120,130,150,.22)';
     ctx.beginPath(); ctx.arc(-R * 0.24 + i * R * 0.06, -R * 0.30, R * 0.022, 0, 7); ctx.fill();
   }
   // top-centre marker drawn ON the rim (12 o'clock band, like a real F1 wheel) so the steering angle reads clearly
