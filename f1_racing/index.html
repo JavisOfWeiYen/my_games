@@ -174,6 +174,8 @@ function makeCar(opts = {}) {
     ersOn: false, drs: 0,                             // live state for the HUD
     sgrip: 1, sres: 1, sdrv: 1,                        // smoothed surface grip / resistance / drive multipliers
     nearIdx: 0,                                        // this car's cached nearest-centreline index
+    _offT: 0, _recovering: false,                      // anti-pin: off-track time (with hysteresis) + latched marshal-recovery flag
+    _stallT: 0, _progS: 0,                              // anti-pin: time with near-zero net arc-progress while off-line + progress checkpoint
     lap: 1, lastS: 0, s: 0,                            // race progress, per car (for lap count + standings)
     ai: !!opts.ai, name: opts.name || 'You', col: opts.col || '#ffd24a',
     // livery for the first-person car sprite: { base bodywork, accent stripe/details, wing }
@@ -269,6 +271,71 @@ const TRACKS = [
   ] },
   { name: 'Hairpin Park', laps: 2, blurb: '狹窄技術 · 連續髮夾', control: [
     [780,820],[300,800],[300,300],[480,270],[470,640],[650,660],[660,280],[840,270],[830,640],[1010,660],[1070,280],[1290,330],[1290,820],
+  ] },
+  // Monza — classic circuit, map traced 90deg CW so the long axis fits the wide field (not
+  // mirrored: winding stays CW so PIT_SIDE lands the lane on the inside). Main straight = top,
+  // running east through the S/F. Feature order: straight, Rettifilo chicane, Curva Grande,
+  // della Roggia, Lesmo 1+2, Ascari S, Parabolica back onto the straight. ~2.79 km / 19 pts.
+  { name: 'Monza', laps: 4, blurb: '極速殿堂 · 大直線', control: [
+    [520,275],[700,275],[880,275],            // main straight (dead straight through S/F)
+    [978,318],[1086,279],                     // Rettifilo — crisp right-left chicane
+    [1205,322],[1288,468],[1276,610],         // Curva Grande — broad fast sweep
+    [1215,695],                               // della Roggia — distinct kink
+    [1150,772],[1005,790],                    // Lesmo 1 & 2 — sharp turn-in (earns boards + barriers)
+    [852,786],                                // back straight
+    [712,742],[600,786],                      // Ascari — crisp chicane
+    [452,780],                                // back straight
+    [320,744],[244,556],[300,312],[400,275],  // Parabolica + straight lead-in
+  ] },
+  // Silverstone — classic GP layout traced CW to fit the landscape field. Top S/F straight
+  // running east, Abbey/Village/Loop down the right, Wellington straight, Brooklands/Luffield
+  // across the bottom, Copse turning up, Maggotts-Becketts as a crisp 3-flick S (the
+  // signature), Hangar straight, Stowe/Vale/Club back onto the straight. ~2.56 km / 20 pts.
+  { name: 'Silverstone', laps: 3, blurb: '銀石 · 高速S彎', control: [
+    [715,250],[840,250],[965,250],            // main straight (dead straight through S/F)
+    [1080,275],                               // Abbey — fast right
+    [1200,330],[1290,455],                    // Village + Loop into Wellington
+    [1300,590],[1250,700],                    // Wellington straight (down the right)
+    [1140,760],[1000,778],[855,758],          // Brooklands (left) + Luffield (long right)
+    [710,768],[585,745],                      // National straight (across the bottom)
+    [478,698],                                // Copse — fast right, turning up
+    [400,630],[478,528],[398,458],            // Maggotts-Becketts — crisp 3-flick S (signature)
+    [393,358],                                // Hangar straight
+    [475,280],[600,250],                      // Stowe/Vale/Club onto the S/F straight
+  ] },
+  // Spa-Francorchamps — CW, fit to the landscape field. Top S/F straight, La Source hairpin,
+  // Eau Rouge/Raidillon L-R flick, Kemmel straight down the right, Les Combes R-L, Pouhon
+  // long left across the bottom, Stavelot, Blanchimont fast left up the left, Bus Stop 2-pt
+  // chicane back to the line. ~2.86 km / 21 pts.
+  { name: 'Spa', laps: 3, blurb: '紅水彎 · 高速經典', control: [
+    [665,250],[800,250],[930,250],            // main straight (dead straight through S/F)
+    [1055,282],[1120,375],                    // La Source — tight right hairpin
+    [1050,458],[1145,540],                    // Eau Rouge / Raidillon — L-R flick
+    [1235,655],[1285,775],                    // Kemmel straight (down the right)
+    [1180,822],[1025,802],                    // Les Combes — R-L
+    [870,815],[715,800],                      // Pouhon — long left (across the bottom)
+    [565,814],[410,792],                      // Fagnes/Campus + Stavelot
+    [265,700],[225,558],                      // Stavelot exit + Blanchimont (fast left, up the left)
+    [268,415],                                // up the left side
+    [335,325],[430,285],[535,250],            // Bus Stop chicane back onto the straight
+  ] },
+  // Monaco — stylized street circuit traced CW (~0.75 scale => ~2.74 km). Main port straight,
+  // Ste Devote, Massenet/Casino sweep, Mirabeau, Loews hairpin (the tightest corner, the
+  // signature) upper-right, Portier, tunnel sweep, Nouvelle chicane, Tabac, swimming-pool S,
+  // Rascasse, Noghes back up the left to the line. 21 pts.
+  { name: 'Monaco', laps: 3, blurb: '摩納哥街道 · 港灣髮夾', control: [
+    [575,250],[708,250],[840,250],            // main port straight (dead straight through S/F)
+    [958,286],                                // Ste Devote — right
+    [1040,365],[1150,442],                    // Massenet (L) / Casino (R) sweep
+    [1215,548],                               // Mirabeau — descending right
+    [1170,640],[1262,708],[1178,770],         // Loews hairpin — tightest corner (signature)
+    [1070,802],                               // Portier — right
+    [922,816],[772,808],                      // tunnel sweep (long right)
+    [640,820],[518,800],                      // Nouvelle — 2-pt chicane
+    [388,772],                                // Tabac — left
+    [282,672],[322,558],                      // swimming-pool section as one S
+    [252,452],                                // Rascasse — tight right
+    [348,275],[450,250],                      // Noghes back onto the straight
   ] },
 ];
 let trackIndex = +(localStorage.getItem('apexgp-track') ?? 1);   // default circuit: Velocity (index 1)
@@ -474,7 +541,7 @@ function resetCar(car) {
   car.throttle = car.brake = 0; car.sgrip = car.sres = car.sdrv = 1;
   car.tyre.wear = 0; car.tyre.temp = 80;        // fresh set of the current compound
   car.fuel = 1; car.ers = 0.7; car.ersOn = false; car.drs = 0;
-  car.nearIdx = 0;
+  car.nearIdx = 0; car._offT = 0; car._recovering = false; car._stallT = 0; car._progS = 0;
 }
 // ease a car's throttle/brake toward its input source (human keys or, later, an AI driver)
 function applyInput(car, input, dt) {
@@ -591,15 +658,43 @@ function step(car, input, dt) {
     car.vx *= 0.82; car.vy *= 0.82; car.av *= 0.7;       // scrub speed but keep yaw so it can rotate
     car.vx -= lp.nx * sg * 2.2; car.vy -= lp.ny * sg * 2.2;          // nudge back onto track
   }
-  // anti-pin recovery: if stranded on the grass at crawling speed (e.g. nose into the wall,
-  // throttle just grinding), swing the heading back toward the track and drift inward, so you
-  // can NEVER get dead-stuck. Gated to off-track + low speed, so on-track slow corners are untouched.
+  // anti-pin recovery: a car must NEVER get dead-stuck against the barrier or a prop, at ANY
+  // speed. Track continuous time spent OFF-TRACK (grass/runoff). Brief excursions the car drives
+  // out of on its own — glancing wall scrapes, a corner-exit run wide — clear well before the
+  // threshold, so this never touches normal racing; and it is gated to off-track only, so on-track
+  // slow corners and car-vs-car contact are never affected.
+  // Off-track accumulator with HYSTERESIS: build on grass, DECAY (not hard-reset) on brief on-track
+  // flickers, so a nearest-index flip at a corner apex can't keep restarting the timer.
+  if (lim.surf === 'grass') car._offT += dt; else car._offT = Math.max(0, car._offT - dt * 3);
+  // Independent progress-stall detector: a car OFF the racing line yet barely advancing along the
+  // lap is pinned no matter how its surface flickers. Net arc-length progress (not instantaneous
+  // speed) is the signal, so the grass/kerb classification flicker during a pin can't fool it.
+  let dS = lim.s - car._progS;
+  if (dS < -track.total / 2) dS += track.total; else if (dS > track.total / 2) dS -= track.total;
+  if ((lim.surf !== 'grass' && Math.abs(lim.lat) < HALF_W * 0.8) || dS > 4) { car._stallT = 0; car._progS = lim.s; }
+  else car._stallT += dt;
+  // LATCH recovery on when either signal trips, and keep it latched (through surface flicker and any
+  // re-contact) until the car is genuinely back on the racing line (|lat| well inside the road).
+  if (car._offT > 2.2 || car._stallT > 2.5) car._recovering = true;   // active marshal recovery -> also ghosts past solid props / other cars (see sceneryCollide + resolveCollisions)
+  if (car._recovering && Math.abs(lim.lat) < HALF_W * 0.8) { car._recovering = false; car._offT = 0; car._stallT = 0; car._progS = lim.s; }
+  //   (a) gentle nudge for the low-speed crawl-out case (nose into the wall, throttle grinding).
   if (lim.surf === 'grass' && Math.hypot(car.vx, car.vy) < 7) {
     const lp = lim.p, sg = lim.lat > 0 ? 1 : -1;
     let da = Math.atan2(lp.uy, lp.ux) - car.a; da = Math.atan2(Math.sin(da), Math.cos(da));
     car.a += da * Math.min(1, dt * 2.5);                              // ease the nose back to the track direction
     car.vx -= lp.nx * sg * 6 * dt; car.vy -= lp.ny * sg * 6 * dt;     // steady drift toward the track
     car.av *= 0.5;
+  }
+  //   (b) firm marshal recovery once stuck/crawling off-track too long, regardless of speed:
+  //       slide it back across the runoff at a bounded rate (a drag, NOT a teleport), aim it
+  //       down-track and bleed speed, until it is back on the racing surface.
+  if (car._recovering) {
+    const lp = lim.p, sg = lim.lat > 0 ? 1 : -1, targetLat = sg * HALF_W * 0.3;
+    const newLat = lim.lat - sg * Math.min(Math.abs(lim.lat - targetLat), 16 * dt);   // <=16 m/s inward
+    car.x = lp.x + lp.nx * newLat; car.y = lp.y + lp.ny * newLat;
+    let da = Math.atan2(lp.uy, lp.ux) - car.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+    car.a += da * Math.min(1, dt * 5);
+    car.vx *= 0.9; car.vy *= 0.9; car.av *= 0.5;
   }
 
   // skid / smoke when a tyre is sliding
@@ -1790,6 +1885,7 @@ function resolveCollisions() {
   for (let a = 0; a < allCars.length; a++) {
     for (let b = a + 1; b < allCars.length; b++) {
       const A = allCars[a], B = allCars[b];
+      if (A._recovering || B._recovering) continue;    // a marshal-dragged car ghosts other cars too, so a collision can't shove it back off mid-recovery
       const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy), min = CAR_R * 2;
       if (d >= min || d < 1e-4) continue;
       const nx = dx / d, ny = dy / d, push = (min - d) * 0.5;
@@ -1822,6 +1918,7 @@ function sceneryCollide(c) {
     const list = bk[((c.nearIdx + w) % N + N) % N];
     for (const o of list) {
       if (o.down) continue;
+      if (c._recovering && o.solid) continue;              // a car being marshal-dragged back on-track ghosts past solid props so they can't re-trap it
       for (const cc of o.cc) {
         const dx = c.x - cc.x, dy = c.y - cc.y, min = cc.r + CAR_R, d = Math.hypot(dx, dy);
         if (d >= min || d < 1e-4) continue;
