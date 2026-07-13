@@ -1253,27 +1253,35 @@ function drawBoard(o, p) {
   ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.fillRect(x - w * 0.36, py + h * 0.30, w * 0.72, h * 0.17);
   ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(x - w * 0.30, py + h * 0.58, w * 0.52, h * 0.11);
 }
-function drawStand(o, p) {
-  const sc = p.sc, x = p.x, gy = p.y, w = o.w * sc, h = o.h * sc;
-  if (h < 4 || x < -w || x > W + w) return;
-  const x0 = x - w / 2, top = gy - h;
+// crowd palette — shared by the baked cache and the live flag overlay
+const NEUT = ['#b9b2a4', '#a2988a', '#cbc4b6', '#8d94a0', '#9a9384'];   // skin / clothing greys (dominant)
+const POP  = ['#b5544e', '#4a6ea8', '#4f9673', '#c79a4a'];             // desaturated colour pops (rare)
+// Bake a stand's STATIC pixels (terrace, plinth, seeded crowd speckle, step-lines, steelwork,
+// roof) into its own offscreen canvas ONCE, so the per-frame path is a single drawImage instead
+// of ~284 fillRects. Only translate + uniform scale change per frame, so the bake is scale-agnostic
+// beyond a fixed reference resolution. Living crowd (flags/flashes) is NOT baked — it stays live in
+// drawStand. Same offscreen-canvas idiom as makePatterns().
+function buildStandCache(o) {
+  const s = Math.min(128, 64 * dpr);                                   // px per metre reference scale
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(o.w * 1.08 * s); cv.height = Math.ceil(o.h * s);
+  const c = cv.getContext('2d');
+  const sc = s, w = o.w * s, h = o.h * s, x0 = w * 0.04, top = 0, gy = h;
   let sd = o.seed >>> 0; const rnd = () => ((sd = (sd * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   // sloped terrace
-  ctx.fillStyle = '#8b93a2'; ctx.beginPath();
-  ctx.moveTo(x0, gy); ctx.lineTo(x0 + w, gy); ctx.lineTo(x0 + w, top + h * 0.55); ctx.lineTo(x0, top + h * 0.25); ctx.closePath(); ctx.fill();
+  c.fillStyle = '#8b93a2'; c.beginPath();
+  c.moveTo(x0, gy); c.lineTo(x0 + w, gy); c.lineTo(x0 + w, top + h * 0.55); c.lineTo(x0, top + h * 0.25); c.closePath(); c.fill();
   // concrete plinth along the base, with panel seams — the stand sits on a foundation
   // instead of the crowd speckle bleeding straight into the grass
   const plinthH = Math.max(2, h * 0.11);
-  ctx.fillStyle = '#5c626e'; ctx.fillRect(x0, gy - plinthH, w, plinthH);
-  ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(x0, gy - plinthH, w, Math.max(1, plinthH * 0.18));
+  c.fillStyle = '#5c626e'; c.fillRect(x0, gy - plinthH, w, plinthH);
+  c.fillStyle = 'rgba(255,255,255,.08)'; c.fillRect(x0, gy - plinthH, w, Math.max(1, plinthH * 0.18));
   if (w > 40) {
-    ctx.fillStyle = 'rgba(10,12,18,.30)';
-    for (let k = 1; k < 6; k++) ctx.fillRect(x0 + (w * k) / 6, gy - plinthH, Math.max(1, sc * 0.03), plinthH);
+    c.fillStyle = 'rgba(10,12,18,.30)';
+    for (let k = 1; k < 6; k++) c.fillRect(x0 + (w * k) / 6, gy - plinthH, Math.max(1, sc * 0.03), plinthH);
   }
   // speckled crowd — mostly a muted warm-grey mass with the occasional colour pop, so it reads
   // as a packed stand of people rather than confetti. Dense + small dots = fine texture, not scatter.
-  const NEUT = ['#b9b2a4', '#a2988a', '#cbc4b6', '#8d94a0', '#9a9384'];   // skin / clothing greys (dominant)
-  const POP  = ['#b5544e', '#4a6ea8', '#4f9673', '#c79a4a'];             // desaturated colour pops (rare)
   // FIXED seat grid from the stand's real-world size (o.w/o.h in metres), NOT its on-screen size:
   // only the dot SIZE scales with distance. Keeps this O(1) per stand — deriving cols/rows from the
   // pixel width made it O(sc^2), so a stand up close fired tens of thousands of fillRects (frame spike).
@@ -1284,21 +1292,65 @@ function drawStand(o, p) {
     const u = cc / cols, frontY = top + h * 0.25 + (h * 0.30) * u;       // follow the terrace slope
     const px = x0 + u * w + rnd() * (w / cols) * 0.5;
     const pyd = frontY + (gy - frontY) * (r / rows);
-    ctx.fillStyle = rnd() < 0.78 ? NEUT[(rnd() * NEUT.length) | 0] : POP[(rnd() * POP.length) | 0];
-    ctx.fillRect(px, pyd, dw, dh);
+    c.fillStyle = rnd() < 0.78 ? NEUT[(rnd() * NEUT.length) | 0] : POP[(rnd() * POP.length) | 0];
+    c.fillRect(px, pyd, dw, dh);
   }
   // terrace step-lines over the crowd — the horizontal structure that makes the speckle
   // read as seated ROWS instead of static noise
   if (h > 14) {
-    ctx.strokeStyle = 'rgba(10,12,18,.20)'; ctx.lineWidth = Math.max(1, sc * 0.045);
+    c.strokeStyle = 'rgba(10,12,18,.20)'; c.lineWidth = Math.max(1, sc * 0.045);
     for (let r = 2; r < rows; r += 2) {
       const t = r / rows;
-      ctx.beginPath();
-      ctx.moveTo(x0, (top + h * 0.25) + (gy - (top + h * 0.25)) * t);
-      ctx.lineTo(x0 + w, (top + h * 0.55) + (gy - (top + h * 0.55)) * t);
-      ctx.stroke();
+      c.beginPath();
+      c.moveTo(x0, (top + h * 0.25) + (gy - (top + h * 0.25)) * t);
+      c.lineTo(x0 + w, (top + h * 0.55) + (gy - (top + h * 0.55)) * t);
+      c.stroke();
     }
   }
+  // roof support columns, planted on the terrace slope in front of the crowd,
+  // plus end-frames at both edges — the steelwork that makes it a BUILDING
+  if (h > 10) {
+    const colW = Math.max(1, sc * 0.10);
+    c.fillStyle = '#3a404c';
+    for (const u of [0.06, 0.5, 0.94]) {
+      const cxp = x0 + u * w, footY = top + h * 0.25 + h * 0.30 * u;
+      c.fillRect(cxp - colW / 2, top + h * 0.12, colW, footY - (top + h * 0.12));
+    }
+    c.fillStyle = '#2e333d';
+    c.fillRect(x0 - colW / 2, top + h * 0.12, colW, gy - (top + h * 0.12));           // left end-frame
+    c.fillRect(x0 + w - colW / 2, top + h * 0.12, colW, gy - (top + h * 0.12));       // right end-frame
+  }
+  // roof canopy (warm-lit by the low sun) + shaded lip
+  c.fillStyle = '#e7ddca'; c.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
+  c.fillStyle = 'rgba(0,0,0,.20)'; c.fillRect(x0 - w * 0.04, top + h * 0.16, w * 1.08, Math.max(1, h * 0.035));
+  // mip chain: each level is a half-size copy of the previous (downscale ratio always 2, so the
+  // one-time bake stays cheap), down to ~32 px wide. drawStand blits the smallest level still >=
+  // the on-screen size, so distant stands never force a >2x software downscale of the full canvas.
+  const mips = [cv];
+  let prev = cv;
+  while ((prev.width >> 1) >= 32) {
+    const nw = prev.width >> 1, nh = Math.max(1, prev.height >> 1);
+    const m = document.createElement('canvas'); m.width = nw; m.height = nh;
+    const mc = m.getContext('2d');
+    mc.imageSmoothingEnabled = true; mc.imageSmoothingQuality = 'high';
+    mc.drawImage(prev, 0, 0, nw, nh);
+    mips.push(m); prev = m;
+  }
+  o._mips = mips; o._cacheDpr = dpr;
+}
+function drawStand(o, p) {
+  const sc = p.sc, x = p.x, gy = p.y, w = o.w * sc, h = o.h * sc;
+  if (h < 4 || x < -w || x > W + w) return;
+  const x0 = x - w / 2, top = gy - h;
+  // blit the baked static stand in one drawImage (rebuild if dpr changed since bake).
+  // pick the smallest mip level whose width still covers the on-screen blit in device pixels,
+  // so a near stand uses the full-res level (pixel parity) and a distant one downscales a small
+  // source by <2x (cheap on software rasterisers).
+  if (!o._mips || o._cacheDpr !== dpr) buildStandCache(o);
+  const target = w * 1.08 * dpr, mips = o._mips;
+  let mip = mips[0];
+  for (let i = mips.length - 1; i >= 0; i--) { if (mips[i].width >= target) { mip = mips[i]; break; } }
+  ctx.drawImage(mip, x0 - w * 0.04, top, w * 1.08, h);
   // life in the crowd: a few team flags waving on the terrace, and camera flashes
   // popping at pseudo-random seats (re-rolled every ~130 ms so they spark and die)
   if (h > 12) {
@@ -1327,22 +1379,6 @@ function drawStand(o, p) {
       ctx.globalAlpha = ga;
     }
   }
-  // roof support columns, planted on the terrace slope in front of the crowd,
-  // plus end-frames at both edges — the steelwork that makes it a BUILDING
-  if (h > 10) {
-    const colW = Math.max(1, sc * 0.10);
-    ctx.fillStyle = '#3a404c';
-    for (const u of [0.06, 0.5, 0.94]) {
-      const cxp = x0 + u * w, footY = top + h * 0.25 + h * 0.30 * u;
-      ctx.fillRect(cxp - colW / 2, top + h * 0.12, colW, footY - (top + h * 0.12));
-    }
-    ctx.fillStyle = '#2e333d';
-    ctx.fillRect(x0 - colW / 2, top + h * 0.12, colW, gy - (top + h * 0.12));           // left end-frame
-    ctx.fillRect(x0 + w - colW / 2, top + h * 0.12, colW, gy - (top + h * 0.12));       // right end-frame
-  }
-  // roof canopy (warm-lit by the low sun) + shaded lip
-  ctx.fillStyle = '#e7ddca'; ctx.fillRect(x0 - w * 0.04, top, w * 1.08, Math.max(2, h * 0.16));
-  ctx.fillStyle = 'rgba(0,0,0,.20)'; ctx.fillRect(x0 - w * 0.04, top + h * 0.16, w * 1.08, Math.max(1, h * 0.035));
 }
 // rival cars as ground-anchored billboards: project each to its tyre-contact point and scale by
 // distance (project's `sc` = pixels-per-metre there). Drawn far -> near so nearer cars overlap.
