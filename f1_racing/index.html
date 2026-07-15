@@ -58,8 +58,8 @@
     text-transform: none; line-height: 1.25; cursor: pointer; }
   #overlay .tchip small { display: block; color: #7d8db0; font-weight: 400; font-size: 11px; margin-top: 2px; }
   #overlay .tchip.on { border-color: #46e0a0; background: rgba(70,224,160,.14); color: #eaf0ff; }
-  #oppPick, #diffPick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
-  #oppPick .picklabel, #diffPick .picklabel { color: #7d8db0; font-size: 12px; margin-right: 4px; letter-spacing: .04em; }
+  #oppPick, #diffPick, #qualiPick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  #oppPick .picklabel, #diffPick .picklabel, #qualiPick .picklabel { color: #7d8db0; font-size: 12px; margin-right: 4px; letter-spacing: .04em; }
   #overlay .nchip { border: 1px solid rgba(120,135,165,.4); border-radius: 8px; background: rgba(20,26,40,.6);
     color: #cdd6ea; width: 30px; height: 30px; font-family: inherit; font-size: 13px; font-weight: 700;
     letter-spacing: 0; text-transform: none; cursor: pointer; padding: 0; }
@@ -103,6 +103,7 @@
     <div id="trackPick"></div>
     <div id="oppPick"></div>
     <div id="diffPick"></div>
+    <div id="qualiPick"></div>
     <button id="ovBtn">▶ Drive 開始</button>
     <div class="links">
       <a href="the-science.html">📖 賽車的科學 The Science</a>
@@ -238,10 +239,18 @@ function applyDifficulty() {
   }
 }
 function setDifficulty(d) { difficulty = (d === 'hard') ? 'hard' : 'easy'; applyDifficulty(); try { localStorage.setItem('apexgp-diff', difficulty); } catch (e) {} }
+// qualifying toggle (menu setting, persisted). ON = a timed quali session earns the grid; OFF = today's
+// behaviour (player spliced mid-pack, straight to the race).
+let qualiOn = (localStorage.getItem('apexgp-quali') ?? 'on') !== 'off';
+function setQuali(on) { qualiOn = !!on; try { localStorage.setItem('apexgp-quali', qualiOn ? 'on' : 'off'); } catch (e) {} }
 let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
 let countdown = 0, finished = false, standings = null, goFlash = 0;   // race start lights + finish standings
+// qualifying: a pre-race timed session that sets the grid. `qualifying` = a quali session is live now;
+// `qualiClass` = the finished classification (sorted cars) shown on the results panel awaiting Enter;
+// `qualiOrder` = the grid order carried into the race (and reused by R-restart). See §11.
+let qualifying = false, qualiClass = null, qualiOrder = null;
 // pit-stop state (player): the selected next compound, the running stop timer, and flags
 let nextCompound = 'medium', pitStop = 0, pitDone = false, pitLaneNow = false;
 // sector timing (player): current sector index, its start time, this lap's times, session bests,
@@ -901,6 +910,7 @@ function render() {
   if (countdown > 0) drawStartLights();
   else if (goFlash > 0) drawGo();
   if (finished) drawResults();
+  if (qualiClass) drawQualiResults();
 }
 function drawStartLights() {
   const num = Math.max(1, Math.ceil(countdown - 0.2));   // 3.2..0.2 -> 3, 2, 1
@@ -955,6 +965,39 @@ function drawResults() {
   ctx.fillText('BEST 最佳單圈 ' + fmt(best), cx, y + 18);
   ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif';
   ctx.fillText('按 R 再比一場　·　R to race again', cx, y + 42);
+  ctx.textAlign = 'left';
+}
+// qualifying classification panel: every car's best quali lap and the grid slot it earned.
+function drawQualiResults() {
+  ctx.fillStyle = 'rgba(6,9,15,.80)'; ctx.fillRect(0, 0, W, H);
+  const cx = W / 2; let y = Math.max(56, H * 0.13);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#eaf0ff'; ctx.font = '900 32px system-ui, sans-serif'; ctx.fillText('⏱️ 排位結果 QUALIFYING', cx, y);
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 14px system-ui, sans-serif'; ctx.fillText(track.name + ' · 起跑順位 starting grid', cx, y + 24);
+  y += 54;
+  const rows = qualiClass || [], rowH = Math.min(36, Math.max(24, (H * 0.62) / Math.max(1, rows.length)));
+  const w = Math.min(460, W * 0.88), x0 = cx - w / 2;
+  const pole = rows.find(c => c.qBest) ? rows.find(c => c.qBest).qBest : 0;   // gap reference = pole time
+  rows.forEach((c, i) => {
+    const isP = c === car;
+    ctx.fillStyle = isP ? 'rgba(70,224,160,.18)' : 'rgba(20,26,40,.65)'; rrectP(x0, y, w, rowH - 6, 8); ctx.fill();
+    if (isP) { ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    ctx.textAlign = 'left'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#eaf0ff'; ctx.font = '800 17px system-ui, sans-serif';
+    ctx.fillText('P' + (i + 1), x0 + 14, y + rowH / 2 + 2);
+    ctx.fillStyle = c.col; ctx.beginPath(); ctx.arc(x0 + 60, y + rowH / 2 - 3, 6, 0, 7); ctx.fill();
+    ctx.fillStyle = isP ? '#46e0a0' : '#dbe3f2'; ctx.font = '700 15px system-ui, sans-serif';
+    ctx.fillText(isP ? 'YOU 你' : c.name, x0 + 74, y + rowH / 2 + 2);
+    // right-aligned: best quali lap, or a gap to pole, or "無時間 no time"
+    ctx.textAlign = 'right'; ctx.font = '700 14px system-ui, sans-serif';
+    if (c.qBest) {
+      ctx.fillStyle = i === 0 ? '#ffd24a' : '#cdd6ea';
+      const label = (i === 0 || !pole) ? fmt(c.qBest) : ('+' + ((c.qBest - pole) / 1000).toFixed(3));
+      ctx.fillText(label, x0 + w - 14, y + rowH / 2 + 2);
+    } else { ctx.fillStyle = '#6f80a0'; ctx.fillText('無時間 no time', x0 + w - 14, y + rowH / 2 + 2); }
+    y += rowH;
+  });
+  ctx.textAlign = 'center'; ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif';
+  ctx.fillText('按 Enter 開始正賽　·　ENTER to race', cx, y + 26);
   ctx.textAlign = 'left';
 }
 // interpolated road cross-section ("rib") at parameter t in [0,1] between pts[i] and pts[i+1]
@@ -1749,9 +1792,16 @@ function drawTelemetry() {
 function drawHud() {
   // top-left: lap count + best lap (the live lap time lives on the dash)
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#eaf0ff'; ctx.font = '800 16px system-ui, sans-serif'; ctx.fillText('P' + racePosition() + ' / ' + allCars.length, 16, 30);
-  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + Math.max(1, lap) + (track.laps ? ' / ' + track.laps : ''), 16, 50);
-  ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 70);
+  if (qualifying) {                                    // quali: position is meaningless — show the session state
+    ctx.fillStyle = '#ffd24a'; ctx.font = '800 16px system-ui, sans-serif'; ctx.fillText('QUALI 排位', 16, 30);
+    ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif';
+    ctx.fillText(lap < 1 ? 'OUT LAP 出圈' : ('LAP 圈 ' + Math.min(lap, 2) + ' / 2'), 16, 50);
+    ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(car.qBest), 16, 70);
+  } else {
+    ctx.fillStyle = '#eaf0ff'; ctx.font = '800 16px system-ui, sans-serif'; ctx.fillText('P' + racePosition() + ' / ' + allCars.length, 16, 30);
+    ctx.fillStyle = '#9fb0cf'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('LAP 圈 ' + Math.max(1, lap) + (track.laps ? ' / ' + track.laps : ''), 16, 50);
+    ctx.fillStyle = '#6f80a0'; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('BEST 最佳 ' + fmt(best), 16, 70);
+  }
   // sector splits: this lap's completed sectors, green when they're the session best
   ctx.font = '600 11px system-ui, sans-serif';
   for (let k = 0; k < 3; k++) {
@@ -1955,17 +2005,27 @@ function updateProgress(c, isPlayer) {
   }
   if (c.lastS > track.total * 0.7 && s < track.total * 0.25) {       // crossed the start/finish line
     c.lap++;                                                          // 0 -> 1 is the start; 1 -> 2.. complete laps
+    if (qualifying) {                                   // per-car quali timing: lap 1 is the out-lap (untimed);
+      if (c.qLapStart) {                                // a timed lap was running -> it just completed
+        const qt = perf - c.qLapStart;
+        if (!c.qBest || qt < c.qBest) c.qBest = qt;     // keep each car's best timed lap this session
+      }
+      c.qLapStart = perf;                               // start the next timed lap from the line
+    }
     if (isPlayer) {
       if (c.lap >= 2) sectorDone(2);                    // the line is the S3 split (skip the grid->line dash)
       else { curSec = 0; secStart = perf; }
       secTimes = [0, 0, 0];                             // fresh row for the new lap (the S3 delta lives on in secFlash)
-      if (c.lap >= 2 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
+      // persist the per-track best ONLY in a real race — quali laps must not touch the stored best
+      if (!qualifying && c.lap >= 2 && (best === 0 || lapNow < best)) { best = lapNow; try { localStorage.setItem(bestKey(trackIndex), Math.round(best)); } catch (e) {} }
       lap = c.lap; lapStart = perf; lapNow = 0;
       respawnScenery();                                 // stand the knocked-down hoardings back up each lap
     }
+    // quali: end the session when the PLAYER completes the 2nd timed lap (lap 0=grid, 1=out, 2=T1, 3=T2 done)
+    if (qualifying && isPlayer && c.lap >= 3) { endQuali(); return; }
     // chequered flag: the FIRST car — player OR a rival — to complete the final lap ends the race,
-    // so it finishes properly even if the player never drives away from the grid.
-    if (!finished && c.lap > track.laps) finishRace();
+    // so it finishes properly even if the player never drives away from the grid. Never during quali.
+    if (!qualifying && !finished && c.lap > track.laps) finishRace();
   }
   c.lastS = s;
 }
@@ -1995,6 +2055,20 @@ function finishRace() {
   finished = true;
   const prog = c => c.lap * track.total + c.s;
   standings = allCars.slice().sort((a, b) => prog(b) - prog(a));   // final order by distance covered
+}
+// quali classification: cars with a timed lap sorted fastest-first; cars with none go to the back —
+// AI keep their field order, the player (if he never set a time) starts at the very back.
+function classifyQuali() {
+  const timed = allCars.filter(c => c.qBest).sort((a, b) => a.qBest - b.qBest);
+  const noTime = allCars.filter(c => !c.qBest).sort((a, b) => (a === car ? 1 : 0) - (b === car ? 1 : 0));
+  return [...timed, ...noTime];
+}
+// player finished quali (2 timed laps done, or pressed Enter): freeze the sim, build the classification
+// and the grid order the race will use, and raise the results panel (Enter starts the race).
+function endQuali() {
+  qualifying = false; running = false;
+  qualiClass = classifyQuali();
+  qualiOrder = qualiClass.slice();
 }
 // standings: how many cars are further round the track than the player (progress = laps*length + arc-pos)
 function racePosition() {
@@ -2081,12 +2155,15 @@ window.addEventListener('resize', resize);
 // Switch circuit: rebuild the track from data, put the car on its grid, load that
 // track's own best lap. Everything else (physics/render/minimap) reads from `track`.
 // place every car on the start grid, just past the line (small lateral + longitudinal stagger so dots are distinct)
-function gridCars() {
+function gridCars(order) {
   const pts = track.pts, N = pts.length, spacing = track.total / N;
   // a staggered 2-column grid laid out BEHIND the start/finish line; fastest rival on pole,
   // the player slotted mid-pack. lap = 0 on the grid; the first line crossing starts lap 1.
-  const field = aiCars.slice();
-  field.splice(Math.floor(field.length / 2), 0, car);
+  // `order` (optional): an explicit car ordering (pole first) — used by qualifying to grid the field
+  // by classification. Absent -> the default mid-pack splice (quali-OFF behaviour, unchanged).
+  let field;
+  if (order) field = order.slice();
+  else { field = aiCars.slice(); field.splice(Math.floor(field.length / 2), 0, car); }
   field.forEach((c, g) => {
     resetCar(c);
     const row = Math.floor(g / 2), col = g % 2;
@@ -2135,9 +2212,21 @@ diffPick.addEventListener('click', e => {
   const btn = e.target.closest('.tchip'); if (!btn) return;
   setDifficulty(btn.dataset.d); renderDiffPicker();
 });
+const qualiPick = $('#qualiPick');
+function renderQualiPicker() {
+  qualiPick.innerHTML = '<span class="picklabel">排位賽 QUALIFYING</span>' +
+    [[true, '開 ON'], [false, '關 OFF']].map(([v, label]) =>
+      `<button class="tchip${v === qualiOn ? ' on' : ''}" data-q="${v ? 1 : 0}">${label}</button>`).join('');
+}
+// the start button reads QUALIFY when quali is on, Drive when off
+function updateStartLabel() { const b = $('#ovBtn'); if (b) b.textContent = qualiOn ? '🏁 開始排位 QUALIFY' : '▶ Drive 開始'; }
+qualiPick.addEventListener('click', e => {
+  const btn = e.target.closest('.tchip'); if (!btn) return;
+  setQuali(btn.dataset.q === '1'); renderQualiPicker(); updateStartLabel();
+});
 // grid the field and arm the 3-second start lights; the loop holds the cars until the lights go out
-function beginRace() {
-  gridCars(); camYaw = car.a;
+function beginRace(gridOrder) {
+  gridCars(gridOrder); camYaw = car.a;               // gridOrder present -> quali grid; absent -> default splice
   lap = 0; lapStart = perf; lapNow = 0; lastS = 0;   // lap 0 = on the grid; first line crossing -> lap 1
   countdown = 3.2; finished = false; standings = null;
   telemetry = [];                                    // fresh trace each race
@@ -2145,11 +2234,25 @@ function beginRace() {
   resetSectors(); bestSec = [0, 0, 0];               // sector bests are per race session
   pitStop = 0; pitDone = false; pitLaneNow = false; nextCompound = car.tyre.compound;
 }
+// start a qualifying session: grid the whole field in default order, arm the same countdown, and run
+// laps as usual — but with the quali flag set so timing/end/grid-order all take the quali path.
+function beginQuali() {
+  qualifying = true; qualiClass = null; qualiOrder = null;
+  for (const c of allCars) { c.qBest = 0; c.qLapStart = 0; }
+  beginRace(allCars.slice());                        // grid in field order (order is irrelevant — all cars run)
+}
 function startGame() {
-  beginRace();
+  if (qualiOn) beginQuali();                         // quali ON: earn the grid first
+  else { qualifying = false; beginRace(); }          // quali OFF: straight to the race, player mid-pack
   initAudio(); $('#overlay').classList.add('hidden'); running = true; paused = false; started = 1;
 }
-function resetToStart() { beginRace(); running = true; paused = false; }
+// Enter on the quali results panel: race with the grid quali produced.
+function startRaceFromQuali() {
+  qualiClass = null; qualifying = false;
+  beginRace(qualiOrder); running = true; paused = false;
+}
+// R restart: re-race the SAME grid (from quali if there was one, else the default splice). Never re-runs quali.
+function resetToStart() { qualiClass = null; qualifying = false; beginRace(qualiOrder); running = true; paused = false; }
 function togglePause() {
   if (!started || !running) return; paused = !paused; const ov = $('#overlay');
   if (paused) { ov.querySelector('h1').textContent = 'Paused'; ov.querySelector('p').innerHTML = 'Take a breather. 暫停中'; ov.querySelector('#ovBtn').textContent = '▶ Resume 繼續'; ov.classList.remove('hidden'); }
@@ -2172,7 +2275,11 @@ addEventListener('keydown', e => {
   if (e.key === 'r' || e.key === 'R') { resetToStart(); e.preventDefault(); return; }
   if (e.key === 't' || e.key === 'T') { cycleTyre(); e.preventDefault(); return; }
   if (e.key === 'g' || e.key === 'G') { exportTelemetry(); e.preventDefault(); return; }
-  if (e.key === 'Enter' && !started) { startGame(); return; }
+  if (e.key === 'Enter') {
+    if (!started) { startGame(); return; }                              // menu: start (quali or race)
+    if (qualifying && running) { endQuali(); e.preventDefault(); return; }   // in quali: end the session now
+    if (qualiClass && !running) { startRaceFromQuali(); e.preventDefault(); return; }  // results panel: race
+  }
   const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
 });
 addEventListener('keyup', e => { const k = keymap[e.key]; if (k) { input[k] = 0; e.preventDefault(); } });
@@ -2187,7 +2294,7 @@ hold('#bErs', 'boost'); hold('#bDrs', 'drs');
 $('#bTyre').addEventListener('click', cycleTyre);
 
 // ===== start =====
-applyDifficulty(); loadTrack(trackIndex); renderTrackPicker(); renderOppPicker(); renderDiffPicker(); resize(); requestAnimationFrame(loop);
+applyDifficulty(); loadTrack(trackIndex); renderTrackPicker(); renderOppPicker(); renderDiffPicker(); renderQualiPicker(); updateStartLabel(); resize(); requestAnimationFrame(loop);
 </script>
 </body>
 </html>
