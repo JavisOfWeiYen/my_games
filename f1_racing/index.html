@@ -1042,6 +1042,18 @@ function rib(i, t) {
 // the silhouette line built up by all nearer road; anything beyond a crest that would paint BELOW
 // it (larger y) is hidden. On a flat track ground y falls monotonically toward the horizon, so the
 // running min tracks it and never clips — hence this whole path is gated behind track.hasElev.
+// Two guards keep the silhouette from being poisoned by a stray rib and culling/flickering the whole
+// road (the Spa flicker bug):
+//   OCC_NEAR — ignore ribs closer than this. Right at the near plane the 1/fwd term is singular, so a
+//     rib a few cm in front (e.g. a section looping physically close) would project to a wild off-screen
+//     y and, as the running min, cull the whole road. Genuine crests occlude from well beyond this
+//     distance, so blind-crest hiding is unaffected.
+//   OCC_DZ — ignore ribs whose ground rises more than this far above the camera eye. A blind crest you
+//     drive over sits within ~a car's height of your eyeline; road far above (e.g. the high
+//     Kemmel/Raidillon tier looping physically close to the Eau Rouge dip) is a DIFFERENT elevation
+//     tier, not a crest ahead, and would sit above the horizon at every distance and wrongly cull the
+//     road behind it.
+const OCC_NEAR = 16, OCC_DZ = 6;
 let _clipSamples = [];
 function clipYAt(fwd) {                            // highest occluding ground screen-y from road nearer than `fwd`
   const s = _clipSamples; if (!s.length) return Infinity;
@@ -1064,9 +1076,12 @@ function drawRoad() {
       if (f0 < NEAR && f1 < NEAR) continue;                     // whole rib-quad behind the camera
       const q = { r0, r1, i, j, fwd: Math.min(f0, f1) };
       if (elev) {                                               // project both rib centres' ground y for the occlusion pass
+        // sample only endpoints that can genuinely occlude (see OCC_NEAR / OCC_DZ): skip ribs at the
+        // near-plane singularity, and skip road sitting far above the eye (a different elevation tier,
+        // not a crest ahead) — either would poison the running-min silhouette below.
         let yt = Infinity, yb = -Infinity, any = false;
-        if (f0 >= NEAR) { const y = _horizonY + (_camz - r0.z) * _focal / f0; if (y < yt) yt = y; if (y > yb) yb = y; any = true; }
-        if (f1 >= NEAR) { const y = _horizonY + (_camz - r1.z) * _focal / f1; if (y < yt) yt = y; if (y > yb) yb = y; any = true; }
+        if (f0 >= OCC_NEAR && r0.z - _camz <= OCC_DZ) { const y = _horizonY + (_camz - r0.z) * _focal / f0; if (y < yt) yt = y; if (y > yb) yb = y; any = true; }
+        if (f1 >= OCC_NEAR && r1.z - _camz <= OCC_DZ) { const y = _horizonY + (_camz - r1.z) * _focal / f1; if (y < yt) yt = y; if (y > yb) yb = y; any = true; }
         q.yTop = any ? yt : null; q.yBot = any ? yb : null;
       }
       quads.push(q);
