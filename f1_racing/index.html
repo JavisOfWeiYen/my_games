@@ -316,22 +316,17 @@ const TRACKS = [
   // Eau Rouge/Raidillon L-R flick, Kemmel straight down the right, Les Combes R-L, Pouhon
   // long left across the bottom, Stavelot, Blanchimont fast left up the left, Bus Stop 2-pt
   // chicane back to the line. ~2.86 km / 21 pts.
-  // Elevation (3rd value = metres, purely visual). Evokes real Spa: high-ish S/F & La Source,
-  // a drop into the Eau Rouge compression (low point), the steep Raidillon climb onto the high
-  // back section (+~20m), a rolling stretch to a pronounced CREST at Pouhon (idx 12) with a steep
-  // plunge behind it (the blind crest), then down to a Stavelot low and back up to the line.
-  // Range ~0-22m, grades ≤~9%. Tune these numbers freely — geometry (x,y) is unchanged.
   { name: 'Spa', laps: 3, blurb: '紅水彎 · 高速經典', control: [
-    [665,250,8],[800,250,9],[930,250,10],         // main straight (dead straight through S/F)
-    [1055,282,12],[1120,375,7],                   // La Source — tight right hairpin (high, then dropping away)
-    [1050,458,0],[1145,540,11],                   // Eau Rouge (low point) / Raidillon — steep climb
-    [1235,655,20],[1285,775,22],                  // Kemmel straight (high back section)
-    [1180,822,20],[1025,802,17],                  // Les Combes — R-L
-    [870,815,15],[715,800,21],                    // Pouhon — rise to the crest (idx 12 = local peak)
-    [565,814,9],[410,792,4],                      // plunge behind the crest + Stavelot (blind crest)
-    [265,700,2],[225,558,3],                       // Stavelot exit (low) + Blanchimont (fast left, up the left)
-    [268,415,6],                                  // climbing back up the left side
-    [335,325,8],[430,285,9],[535,250,8],          // Bus Stop chicane back onto the straight
+    [665,250],[800,250],[930,250],            // main straight (dead straight through S/F)
+    [1055,282],[1120,375],                    // La Source — tight right hairpin
+    [1050,458],[1145,540],                    // Eau Rouge / Raidillon — L-R flick
+    [1235,655],[1285,775],                    // Kemmel straight (down the right)
+    [1180,822],[1025,802],                    // Les Combes — R-L
+    [870,815],[715,800],                      // Pouhon — long left (across the bottom)
+    [565,814],[410,792],                      // Fagnes/Campus + Stavelot
+    [265,700],[225,558],                      // Stavelot exit + Blanchimont (fast left, up the left)
+    [268,415],                                // up the left side
+    [335,325],[430,285],[535,250],            // Bus Stop chicane back onto the straight
   ] },
   // Monaco — stylized street circuit traced CW (~0.75 scale => ~2.74 km). Main port straight,
   // Ste Devote, Massenet/Casino sweep, Mirabeau, Loews hairpin (the tightest corner, the
@@ -357,13 +352,9 @@ const bestKey = i => 'apexgp-best:' + TRACKS[i].name;
 function loadBest(i) { try { return +(localStorage.getItem(bestKey(i)) || 0); } catch (e) { return 0; } }
 function catmull(p0, p1, p2, p3, t) {
   const t2 = t * t, t3 = t2 * t;
-  // z is the optional 3rd control-point component (track elevation in metres, purely visual);
-  // omitted -> 0, so 2D tracks spline to z:0 everywhere and render exactly as before.
-  const z0 = p0[2] || 0, z1 = p1[2] || 0, z2 = p2[2] || 0, z3 = p3[2] || 0;
   return {
     x: 0.5 * (2*p1[0] + (-p0[0]+p2[0])*t + (2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2 + (-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
     y: 0.5 * (2*p1[1] + (-p0[1]+p2[1])*t + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2 + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3),
-    z: 0.5 * (2*z1 + (-z0+z2)*t + (2*z0-5*z1+4*z2-z3)*t2 + (-z0+3*z1-3*z2+z3)*t3),
   };
 }
 function buildTrack(def) {
@@ -384,17 +375,13 @@ function buildTrack(def) {
     const b2 = raw[(i+2)%N], n2x = b2.x - a.x, n2y = b2.y - a.y;
     const ang1 = Math.atan2(uy, ux), ang2 = Math.atan2(n2y, n2x);
     let dA = ang2 - ang1; while (dA > Math.PI) dA -= 2*Math.PI; while (dA < -Math.PI) dA += 2*Math.PI;
-    pts.push({ x: a.x, y: a.y, z: a.z, nx: -uy, ny: ux, ux, uy, s, curv: dA });
+    pts.push({ x: a.x, y: a.y, nx: -uy, ny: ux, ux, uy, s, curv: dA });
   }
   let total = s + Math.hypot(raw[N-1].x - raw[0].x, raw[N-1].y - raw[0].y);
   // minimap bounds
   let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
   for (const p of pts) { minx = Math.min(minx, p.x); miny = Math.min(miny, p.y); maxx = Math.max(maxx, p.x); maxy = Math.max(maxy, p.y); }
-  // elevation is opt-in per track: only circuits whose control points carry a 3rd (z) value
-  // pay for the z projection / blind-crest occlusion. Flat tracks short-circuit everything.
-  const hasElev = def.control.some(p => p.length > 2);
-  track = { def, name: def.name, laps: def.laps, pts, total, minx, miny, maxx, maxy,
-            hasElev, spacing: (pts[1] ? pts[1].s : 6) || 6 };
+  track = { def, name: def.name, laps: def.laps, pts, total, minx, miny, maxx, maxy };
   track.pit = buildPitLane(pts, N);
   track.scenery = buildScenery(pts, N);
   // bucket collidable props by segment so each car only tests the few props beside it
@@ -523,9 +510,6 @@ function buildScenery(pts, N) {
     props.push({ t: 'gantry', x: p.x, y: p.y, seg: 1, lx, ly, rx, ry, solid: true,
       cc: [{ x: lx, y: ly, r: 0.7 }, { x: rx, y: ry, r: 0.7 }] });
   }
-  // ground elevation of each prop = z of the centreline point it was generated beside (0 on flat
-  // tracks). Wall/gantry endpoints span only a couple of segments, so one z reads fine for both.
-  for (const o of props) o.z = pts[o.seg].z;
   return props;
 }
 
@@ -749,23 +733,23 @@ function step(car, input, dt) {
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 function layMarks(speed) {
-  const cs = Math.cos(car.a), sn = Math.sin(car.a), gz = groundZ(car.x, car.y, car.nearIdx);
+  const cs = Math.cos(car.a), sn = Math.sin(car.a);
   for (const side of [-0.62, 0.62]) {
     const rx = car.x - cs * 1.4 - sn * side, ry = car.y - sn * 1.4 + cs * side;
-    marks.push({ x: rx, y: ry, z: gz });
+    marks.push({ x: rx, y: ry });
   }
   if (marks.length > 1600) marks.splice(0, marks.length - 1600);
   if (smoke.length < 140 && Math.random() < 0.6) {
     const rx = car.x - cs * 1.6, ry = car.y - sn * 1.6;
-    smoke.push({ x: rx, y: ry, z: gz, life: 1, sz: 1.4 + Math.random() * 1.6, vx: (Math.random()-.5)*2, vy: (Math.random()-.5)*2 });
+    smoke.push({ x: rx, y: ry, life: 1, sz: 1.4 + Math.random() * 1.6, vx: (Math.random()-.5)*2, vy: (Math.random()-.5)*2 });
   }
 }
 // puff of smoke at a forward offset from the car (used for visible front-tyre lock-ups)
 function puffSmoke(fwdOff, n) {
-  const cs = Math.cos(car.a), sn = Math.sin(car.a), gz = groundZ(car.x, car.y, car.nearIdx);
+  const cs = Math.cos(car.a), sn = Math.sin(car.a);
   for (let i = 0; i < n && smoke.length < 170; i++) {
     const side = (Math.random() - 0.5) * 2.6;
-    smoke.push({ x: car.x + cs * fwdOff - sn * side, y: car.y + sn * fwdOff + cs * side, z: gz,
+    smoke.push({ x: car.x + cs * fwdOff - sn * side, y: car.y + sn * fwdOff + cs * side,
       life: 1, sz: 1.3 + Math.random() * 1.8, vx: (Math.random()-.5)*3, vy: (Math.random()-.5)*3 });
   }
 }
@@ -827,18 +811,6 @@ function aiDriver(c) {
 let camYaw = 0;
 const BACK = 1.3, CAMH = 2.7, HORIZON = 0.44, FOCAL_BASE = 330, NEAR = 0.6;
 let _camx = 0, _camy = 0, _focal = FOCAL_BASE, _horizonY = 0, _cyaw = 0, _cc = 1, _ss = 0, _shx = 0, _shy = 0;
-let _camz = CAMH;   // camera eye height above the z=0 datum: CAMH on flat tracks, CAMH + ground z under the car on elevated ones
-// ground elevation (metres) at a point near track index `idx`, interpolated along the centreline
-// so it's continuous as the nearest-index snaps between samples (no per-frame vertical jitter).
-// Flat tracks (no z data) return 0 immediately -> zero cost, bit-identical projection.
-function groundZ(x, y, idx) {
-  if (!track || !track.hasElev) return 0;
-  const pts = track.pts, N = pts.length, i = ((idx | 0) % N + N) % N, a = pts[i];
-  const d = (x - a.x) * a.ux + (y - a.y) * a.uy;          // signed metres along the tangent from pts[i]
-  const fi = d / track.spacing, k = Math.floor(fi), t = fi - k;
-  const za = pts[((i + k) % N + N) % N].z, zb = pts[((i + k + 1) % N + N) % N].z;
-  return za + (zb - za) * t;
-}
 function updateCam(dt) {
   let dA = car.a - camYaw; while (dA > Math.PI) dA -= 2*Math.PI; while (dA < -Math.PI) dA += 2*Math.PI;
   camYaw += dA * Math.min(1, dt * 5);     // smooth yaw so spins don't whip the view
@@ -849,7 +821,6 @@ function setupProjection() {
   _cc = Math.cos(camYaw); _ss = Math.sin(camYaw);
   _camx = car.x - _cc * BACK;
   _camy = car.y - _ss * BACK;
-  _camz = CAMH + groundZ(car.x, car.y, car.nearIdx);   // ride the camera up/down with the road (no pitch)
   _horizonY = H * HORIZON;
   _focal = FOCAL_BASE * (H / 600);
   // screen-shake: jitter the whole projected world (road/scenery/cars/marks) a few px each frame,
@@ -859,15 +830,14 @@ function setupProjection() {
   _shx = sh ? (Math.random() * 2 - 1) * sh : 0;
   _shy = sh ? (Math.random() * 2 - 1) * sh : 0;
 }
-// project a world point to screen via the chase camera. `wz` is the point's elevation in metres
-// (default 0). With _camz = CAMH and wz = 0 this is _horizonY + CAMH*sc — identical to the flat build.
-function project(wx, wy, wz) {
+// project a ground point (world, z=0) to screen via the chase camera
+function project(wx, wy) {
   const dx = wx - _camx, dy = wy - _camy;
   const fwd = dx * _cc + dy * _ss;
   if (fwd < NEAR) return null;            // behind the camera
   const right = -dx * _ss + dy * _cc;
   const sc = _focal / fwd;
-  return { x: W / 2 + right * sc + _shx, y: _horizonY + (_camz - (wz || 0)) * sc + _shy, sc, fwd };
+  return { x: W / 2 + right * sc + _shx, y: _horizonY + CAMH * sc + _shy, sc, fwd };
 }
 // fill a convex world-space polygon (points in {x,y}), Sutherland–Hodgman-clipped to the camera
 // near plane so quads that straddle the camera get TRIMMED, not dropped whole. Dropping them was
@@ -878,10 +848,9 @@ function fillPolyW(P, fill) {
   for (let i = 0; i < n; i++) {
     const cur = P[i], fcur = (cur.x - _camx) * _cc + (cur.y - _camy) * _ss;
     const inPrev = fprev >= NEAR, inCur = fcur >= NEAR;
-    if (inCur !== inPrev) {                                   // crosses the near plane -> add the crossing (lerp z too)
+    if (inCur !== inPrev) {                                   // crosses the near plane -> add the crossing
       const t = (NEAR - fprev) / (fcur - fprev);
-      clip.push({ x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t,
-                  z: (prev.z || 0) + ((cur.z || 0) - (prev.z || 0)) * t });
+      clip.push({ x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t });
     }
     if (inCur) clip.push(cur);
     prev = cur; fprev = fcur;
@@ -890,7 +859,7 @@ function fillPolyW(P, fill) {
   ctx.fillStyle = fill; ctx.beginPath();
   for (let i = 0; i < clip.length; i++) {
     const q = clip[i], fwd = (q.x - _camx) * _cc + (q.y - _camy) * _ss, sc = _focal / fwd;
-    const sx = W / 2 + (-(q.x - _camx) * _ss + (q.y - _camy) * _cc) * sc + _shx, sy = _horizonY + (_camz - (q.z || 0)) * sc + _shy;
+    const sx = W / 2 + (-(q.x - _camx) * _ss + (q.y - _camy) * _cc) * sc + _shx, sy = _horizonY + CAMH * sc + _shy;
     if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
   }
   ctx.closePath(); ctx.fill();
@@ -1036,33 +1005,10 @@ function rib(i, t) {
   const N = track.pts.length, a = track.pts[i], b = track.pts[(i + 1) % N];
   let nx = a.nx + (b.nx - a.nx) * t, ny = a.ny + (b.ny - a.ny) * t;
   const l = Math.hypot(nx, ny) || 1;
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, nx: nx / l, ny: ny / l };
-}
-// blind-crest occlusion: near->far {f: fwd, y: running-min ground screen-y}. The min screen-y is
-// the silhouette line built up by all nearer road; anything beyond a crest that would paint BELOW
-// it (larger y) is hidden. On a flat track ground y falls monotonically toward the horizon, so the
-// running min tracks it and never clips — hence this whole path is gated behind track.hasElev.
-// Two guards keep the silhouette from being poisoned by a stray rib and culling/flickering the whole
-// road (the Spa flicker bug):
-//   OCC_NEAR — ignore ribs closer than this. Right at the near plane the 1/fwd term is singular, so a
-//     rib a few cm in front (e.g. a section looping physically close) would project to a wild off-screen
-//     y and, as the running min, cull the whole road. Genuine crests occlude from well beyond this
-//     distance, so blind-crest hiding is unaffected.
-//   OCC_DZ — ignore ribs whose ground rises more than this far above the camera eye. A blind crest you
-//     drive over sits within ~a car's height of your eyeline; road far above (e.g. the high
-//     Kemmel/Raidillon tier looping physically close to the Eau Rouge dip) is a DIFFERENT elevation
-//     tier, not a crest ahead, and would sit above the horizon at every distance and wrongly cull the
-//     road behind it.
-const OCC_NEAR = 16, OCC_DZ = 6;
-let _clipSamples = [];
-function clipYAt(fwd) {                            // highest occluding ground screen-y from road nearer than `fwd`
-  const s = _clipSamples; if (!s.length) return Infinity;
-  let lo = 0, hi = s.length - 1, res = -1;
-  while (lo <= hi) { const m = (lo + hi) >> 1; if (s[m].f <= fwd) { res = m; lo = m + 1; } else hi = m - 1; }
-  return res < 0 ? Infinity : s[res].y;
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, nx: nx / l, ny: ny / l };
 }
 function drawRoad() {
-  const pts = track.pts, N = pts.length, quads = [], elev = track.hasElev;
+  const pts = track.pts, N = pts.length, quads = [];
   const FW = (x, y) => (x - _camx) * _cc + (y - _camy) * _ss;   // forward distance of a world point
   for (let n = -4; n < 160; n++) {
     const i = ((car.nearIdx + n) % N + N) % N, a = pts[i], b = pts[(i + 1) % N];
@@ -1074,39 +1020,12 @@ function drawRoad() {
       const r0 = rib(i, j / sub), r1 = rib(i, (j + 1) / sub);
       const f0 = FW(r0.x, r0.y), f1 = FW(r1.x, r1.y);
       if (f0 < NEAR && f1 < NEAR) continue;                     // whole rib-quad behind the camera
-      const q = { r0, r1, i, j, fwd: Math.min(f0, f1) };
-      if (elev) {                                               // project both rib centres' ground y for the occlusion pass
-        // sample only endpoints that can genuinely occlude (see OCC_NEAR / OCC_DZ): skip ribs at the
-        // near-plane singularity, and skip road sitting far above the eye (a different elevation tier,
-        // not a crest ahead) — either would poison the running-min silhouette below.
-        let yt = Infinity, yb = -Infinity, any = false;
-        if (f0 >= OCC_NEAR && r0.z - _camz <= OCC_DZ) { const y = _horizonY + (_camz - r0.z) * _focal / f0; if (y < yt) yt = y; if (y > yb) yb = y; any = true; }
-        if (f1 >= OCC_NEAR && r1.z - _camz <= OCC_DZ) { const y = _horizonY + (_camz - r1.z) * _focal / f1; if (y < yt) yt = y; if (y > yb) yb = y; any = true; }
-        q.yTop = any ? yt : null; q.yBot = any ? yb : null;
-      }
-      quads.push(q);
+      quads.push({ r0, r1, i, j, fwd: Math.min(f0, f1) });
     }
   }
-  quads.sort((p, q) => p.fwd - q.fwd);            // near -> far
-  _clipSamples.length = 0;
-  if (elev) {                                     // running silhouette line: min ground y over all nearer road
-    let runMin = Infinity;
-    for (const q of quads) {
-      q.clipY = runMin;
-      if (q.yTop !== null && q.yTop < runMin) runMin = q.yTop;
-      _clipSamples.push({ f: q.fwd, y: runMin });
-    }
-  }
+  quads.sort((p, q) => q.fwd - p.fwd);            // far -> near (painter's order)
   const sunFace = Math.max(0, Math.cos(camYaw - SUN_AZ));   // how much the camera looks into the sun
-  for (let qi = quads.length - 1; qi >= 0; qi--) {           // far -> near (painter's order)
-    const q = quads[qi];
-    let clipped = false;
-    if (elev) {
-      if (q.yTop !== null && isFinite(q.clipY) && q.yTop >= q.clipY) continue;      // whole quad behind a nearer crest
-      if (q.yBot !== null && isFinite(q.clipY) && q.yBot >= q.clipY) {              // partly hidden -> trim to the crest line
-        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, q.clipY); ctx.clip(); clipped = true;
-      }
-    }
+  for (const q of quads) {
     const { r0, r1, i, j } = q, HL = HALF_W;
     const f = fogAt(q.fwd), band = Math.floor(i / 4) % 2, gband = Math.floor(i / 2) % 2;
     // raking-light shading: faces angled toward the low sun catch light, faces away fall
@@ -1122,27 +1041,27 @@ function drawRoad() {
       let ext = 70;
       if (curv * side > 0.02) ext = Math.min(ext, 4.8 / Math.abs(curv));
       const g2 = g1 + ext;
-      fillPolyW([{ x: r0.x + r0.nx*side*g1, y: r0.y + r0.ny*side*g1, z: r0.z }, { x: r0.x + r0.nx*side*g2, y: r0.y + r0.ny*side*g2, z: r0.z },
-                 { x: r1.x + r1.nx*side*g2, y: r1.y + r1.ny*side*g2, z: r1.z }, { x: r1.x + r1.nx*side*g1, y: r1.y + r1.ny*side*g1, z: r1.z }],
+      fillPolyW([{ x: r0.x + r0.nx*side*g1, y: r0.y + r0.ny*side*g1 }, { x: r0.x + r0.nx*side*g2, y: r0.y + r0.ny*side*g2 },
+                 { x: r1.x + r1.nx*side*g2, y: r1.y + r1.ny*side*g2 }, { x: r1.x + r1.nx*side*g1, y: r1.y + r1.ny*side*g1 }],
                 fogBlend(GRASS_SH[sh][gband ? 0 : 1], f));
     }
     // asphalt (subtle banding)
-    const RQ = [{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL, z: r0.z }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL, z: r0.z },
-                { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL, z: r1.z }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL, z: r1.z }];
+    const RQ = [{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL },
+                { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }];
     fillPolyW(RQ, fogBlend(ASPH_SH[sh][band ? 0 : 1], f));
     // rubbered-in racing groove: a soft dark band down the middle of the lap-worn surface
     if (f < 0.7) {
       const ro = HL * 0.38;
-      fillPolyW([{ x: r0.x + r0.nx*ro, y: r0.y + r0.ny*ro, z: r0.z }, { x: r0.x - r0.nx*ro, y: r0.y - r0.ny*ro, z: r0.z },
-                 { x: r1.x - r1.nx*ro, y: r1.y - r1.ny*ro, z: r1.z }, { x: r1.x + r1.nx*ro, y: r1.y + r1.ny*ro, z: r1.z }],
+      fillPolyW([{ x: r0.x + r0.nx*ro, y: r0.y + r0.ny*ro }, { x: r0.x - r0.nx*ro, y: r0.y - r0.ny*ro },
+                 { x: r1.x - r1.nx*ro, y: r1.y - r1.ny*ro }, { x: r1.x + r1.nx*ro, y: r1.y + r1.ny*ro }],
                 'rgba(14,15,18,' + (0.20 * (1 - f)).toFixed(3) + ')');
     }
     // white edge lines
     const eo = HALF_W - 0.55, edge = 'rgba(238,242,255,' + (0.8 * (1 - f * 0.85)).toFixed(3) + ')';
-    fillPolyW([{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL, z: r0.z }, { x: r0.x + r0.nx*eo, y: r0.y + r0.ny*eo, z: r0.z },
-               { x: r1.x + r1.nx*eo, y: r1.y + r1.ny*eo, z: r1.z }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL, z: r1.z }], edge);
-    fillPolyW([{ x: r0.x - r0.nx*eo, y: r0.y - r0.ny*eo, z: r0.z }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL, z: r0.z },
-               { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL, z: r1.z }, { x: r1.x - r1.nx*eo, y: r1.y - r1.ny*eo, z: r1.z }], edge);
+    fillPolyW([{ x: r0.x + r0.nx*HL, y: r0.y + r0.ny*HL }, { x: r0.x + r0.nx*eo, y: r0.y + r0.ny*eo },
+               { x: r1.x + r1.nx*eo, y: r1.y + r1.ny*eo }, { x: r1.x + r1.nx*HL, y: r1.y + r1.ny*HL }], edge);
+    fillPolyW([{ x: r0.x - r0.nx*eo, y: r0.y - r0.ny*eo }, { x: r0.x - r0.nx*HL, y: r0.y - r0.ny*HL },
+               { x: r1.x - r1.nx*HL, y: r1.y - r1.ny*HL }, { x: r1.x - r1.nx*eo, y: r1.y - r1.ny*eo }], edge);
     // evening sun-glare sheen: stretches of road running toward the sun catch a warm shine,
     // but only while the camera is actually looking into the sun (forward-scatter)
     if (sunFace > 0.15) {
@@ -1153,20 +1072,19 @@ function drawRoad() {
     // kerbs on the inside of corners
     if (Math.abs(pts[i].curv) > 0.02) {
       const side = pts[i].curv > 0 ? 1 : -1, o1 = HALF_W, o2 = HALF_W + KERB_W;
-      fillPolyW([{ x: r0.x + r0.nx*side*o1, y: r0.y + r0.ny*side*o1, z: r0.z }, { x: r0.x + r0.nx*side*o2, y: r0.y + r0.ny*side*o2, z: r0.z },
-                 { x: r1.x + r1.nx*side*o2, y: r1.y + r1.ny*side*o2, z: r1.z }, { x: r1.x + r1.nx*side*o1, y: r1.y + r1.ny*side*o1, z: r1.z }],
+      fillPolyW([{ x: r0.x + r0.nx*side*o1, y: r0.y + r0.ny*side*o1 }, { x: r0.x + r0.nx*side*o2, y: r0.y + r0.ny*side*o2 },
+                 { x: r1.x + r1.nx*side*o2, y: r1.y + r1.ny*side*o2 }, { x: r1.x + r1.nx*side*o1, y: r1.y + r1.ny*side*o1 }],
                 fogBlend(((i + j) % 2) ? '#e23b3b' : '#eef2fb', f));
     }
     // start/finish checker
     if (i < 2) {
       for (let c = 0; c < 8; c++) {
         const t1 = -HALF_W + 2*HALF_W*(c/8), t2 = -HALF_W + 2*HALF_W*((c+1)/8);
-        fillPolyW([{ x: r0.x + r0.nx*t1, y: r0.y + r0.ny*t1, z: r0.z }, { x: r0.x + r0.nx*t2, y: r0.y + r0.ny*t2, z: r0.z },
-                   { x: r1.x + r1.nx*t2, y: r1.y + r1.ny*t2, z: r1.z }, { x: r1.x + r1.nx*t1, y: r1.y + r1.ny*t1, z: r1.z }],
+        fillPolyW([{ x: r0.x + r0.nx*t1, y: r0.y + r0.ny*t1 }, { x: r0.x + r0.nx*t2, y: r0.y + r0.ny*t2 },
+                   { x: r1.x + r1.nx*t2, y: r1.y + r1.ny*t2 }, { x: r1.x + r1.nx*t1, y: r1.y + r1.ny*t1 }],
                   ((c + i + j) % 2) ? '#10131a' : '#eef2fb');
       }
     }
-    if (clipped) ctx.restore();
   }
 }
 // the pit lane: a narrower ribbon of asphalt easing off the main road, with edge lines,
@@ -1182,38 +1100,37 @@ function drawPitLane() {
     if ((fa < NEAR && fb < NEAR) || Math.min(fa, fb) > 420) continue;
     const pa = track.pts[a.i], pb = track.pts[b.i];
     const f = fogAt(Math.max(NEAR, Math.min(fa, fb)));
-    const za = pa.z, zb = pb.z;
-    fillPolyW([{ x: a.x + pa.nx*HW, y: a.y + pa.ny*HW, z: za }, { x: a.x - pa.nx*HW, y: a.y - pa.ny*HW, z: za },
-               { x: b.x - pb.nx*HW, y: b.y - pb.ny*HW, z: zb }, { x: b.x + pb.nx*HW, y: b.y + pb.ny*HW, z: zb }],
+    fillPolyW([{ x: a.x + pa.nx*HW, y: a.y + pa.ny*HW }, { x: a.x - pa.nx*HW, y: a.y - pa.ny*HW },
+               { x: b.x - pb.nx*HW, y: b.y - pb.ny*HW }, { x: b.x + pb.nx*HW, y: b.y + pb.ny*HW }],
               fogBlend((k % 2) ? '#33363e' : '#383b44', f));
     // outer edge line + inner dashed limiter line
     const e1 = HW, e2 = HW - 0.4;
-    fillPolyW([{ x: a.x + pa.nx*e1, y: a.y + pa.ny*e1, z: za }, { x: a.x + pa.nx*e2, y: a.y + pa.ny*e2, z: za },
-               { x: b.x + pb.nx*e2, y: b.y + pb.ny*e2, z: zb }, { x: b.x + pb.nx*e1, y: b.y + pb.ny*e1, z: zb }],
+    fillPolyW([{ x: a.x + pa.nx*e1, y: a.y + pa.ny*e1 }, { x: a.x + pa.nx*e2, y: a.y + pa.ny*e2 },
+               { x: b.x + pb.nx*e2, y: b.y + pb.ny*e2 }, { x: b.x + pb.nx*e1, y: b.y + pb.ny*e1 }],
               'rgba(238,242,255,' + (0.6 * (1 - f * 0.85)).toFixed(3) + ')');
     if (k % 2 === 0)
-      fillPolyW([{ x: a.x - pa.nx*e1, y: a.y - pa.ny*e1, z: za }, { x: a.x - pa.nx*e2, y: a.y - pa.ny*e2, z: za },
-                 { x: b.x - pb.nx*e2, y: b.y - pb.ny*e2, z: zb }, { x: b.x - pb.nx*e1, y: b.y - pb.ny*e1, z: zb }],
+      fillPolyW([{ x: a.x - pa.nx*e1, y: a.y - pa.ny*e1 }, { x: a.x - pa.nx*e2, y: a.y - pa.ny*e2 },
+                 { x: b.x - pb.nx*e2, y: b.y - pb.ny*e2 }, { x: b.x - pb.nx*e1, y: b.y - pb.ny*e1 }],
                 'rgba(255,210,74,' + (0.5 * (1 - f * 0.85)).toFixed(3) + ')');
     // the stop box: yellow frame around the box segment
     if (a.i === PIT_BOX) {
       const bx = 1.9;
-      fillPolyW([{ x: a.x + pa.nx*bx, y: a.y + pa.ny*bx, z: za }, { x: a.x - pa.nx*bx, y: a.y - pa.ny*bx, z: za },
-                 { x: b.x - pb.nx*bx, y: b.y - pb.ny*bx, z: zb }, { x: b.x + pb.nx*bx, y: b.y + pb.ny*bx, z: zb }],
+      fillPolyW([{ x: a.x + pa.nx*bx, y: a.y + pa.ny*bx }, { x: a.x - pa.nx*bx, y: a.y - pa.ny*bx },
+                 { x: b.x - pb.nx*bx, y: b.y - pb.ny*bx }, { x: b.x + pb.nx*bx, y: b.y + pb.ny*bx }],
                 'rgba(255,210,74,.22)');
       for (const [o1, o2] of [[bx, bx - 0.35], [-(bx - 0.35), -bx]])
-        fillPolyW([{ x: a.x + pa.nx*o1, y: a.y + pa.ny*o1, z: za }, { x: a.x + pa.nx*o2, y: a.y + pa.ny*o2, z: za },
-                   { x: b.x + pb.nx*o2, y: b.y + pb.ny*o2, z: zb }, { x: b.x + pb.nx*o1, y: b.y + pb.ny*o1, z: zb }],
+        fillPolyW([{ x: a.x + pa.nx*o1, y: a.y + pa.ny*o1 }, { x: a.x + pa.nx*o2, y: a.y + pa.ny*o2 },
+                   { x: b.x + pb.nx*o2, y: b.y + pb.ny*o2 }, { x: b.x + pb.nx*o1, y: b.y + pb.ny*o1 }],
                   'rgba(255,210,74,.8)');
     }
   }
 }
 function drawMarksP() {
   ctx.fillStyle = 'rgba(18,18,22,.5)';
-  for (const m of marks) { const p = project(m.x, m.y, m.z); if (!p) continue; const s = Math.min(6, Math.max(1, p.sc * 0.5)); ctx.fillRect(p.x - s/2, p.y - s/2, s, s); }
+  for (const m of marks) { const p = project(m.x, m.y); if (!p) continue; const s = Math.min(6, Math.max(1, p.sc * 0.5)); ctx.fillRect(p.x - s/2, p.y - s/2, s, s); }
 }
 function drawSmokeP() {
-  for (const sm of smoke) { const p = project(sm.x, sm.y, sm.z); if (!p) continue; ctx.globalAlpha = sm.life * 0.4; ctx.fillStyle = '#dde2ec'; const r = Math.min(70, p.sc * sm.sz); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill(); }
+  for (const sm of smoke) { const p = project(sm.x, sm.y); if (!p) continue; ctx.globalAlpha = sm.life * 0.4; ctx.fillStyle = '#dde2ec'; const r = Math.min(70, p.sc * sm.sz); ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill(); }
   ctx.globalAlpha = 1;
 }
 // ----- atmosphere: everything fades toward the horizon-glow colour with distance -----
@@ -1261,13 +1178,13 @@ const SUN_AZ = 0.9;
 const SUN_X = Math.cos(SUN_AZ), SUN_Y = Math.sin(SUN_AZ);
 const SHD_X = -SUN_X, SHD_Y = -SUN_Y, SHP_X = SUN_Y, SHP_Y = -SUN_X;
 // tapering ground-shadow quad stretching away from the sun, in world space (near-plane clipped)
-function groundShadow(x, y, halfW, len, alpha, z) {
-  const tx = x + SHD_X * len, ty = y + SHD_Y * len, tip = halfW * 0.55, gz = z || 0;
+function groundShadow(x, y, halfW, len, alpha) {
+  const tx = x + SHD_X * len, ty = y + SHD_Y * len, tip = halfW * 0.55;
   fillPolyW([
-    { x: x + SHP_X * halfW, y: y + SHP_Y * halfW, z: gz },
-    { x: x - SHP_X * halfW, y: y - SHP_Y * halfW, z: gz },
-    { x: tx - SHP_X * tip, y: ty - SHP_Y * tip, z: gz },
-    { x: tx + SHP_X * tip, y: ty + SHP_Y * tip, z: gz },
+    { x: x + SHP_X * halfW, y: y + SHP_Y * halfW },
+    { x: x - SHP_X * halfW, y: y - SHP_Y * halfW },
+    { x: tx - SHP_X * tip, y: ty - SHP_Y * tip },
+    { x: tx + SHP_X * tip, y: ty + SHP_Y * tip },
   ], 'rgba(14,18,28,' + alpha + ')');
 }
 // directionally-shaded surface palettes: [neutral, sun-facing, shaded] × [dark, light]
@@ -1327,36 +1244,30 @@ function drawHills(hz) {
 function drawScenery() {
   if (!track.scenery) return;
   const list = [];
-  for (const o of track.scenery) { if (o.down) continue; const p = project(o.x, o.y, o.z); if (p && p.fwd < 360) list.push({ o, p }); }
+  for (const o of track.scenery) { if (o.down) continue; const p = project(o.x, o.y); if (p && p.fwd < 360) list.push({ o, p }); }
   list.sort((a, b) => b.p.fwd - a.p.fwd);
   // pass 1: long evening shadows on the ground, so every prop stands under everything else
   for (const { o, p } of list) {
     ctx.globalAlpha = Math.max(0, Math.min(1, (360 - p.fwd) / 110));
-    const z = o.z;
-    if (o.t === 'tree') groundShadow(o.x, o.y, o.r * 0.95, o.h * 3, 0.18, z);
-    else if (o.t === 'board') groundShadow(o.x, o.y, 3, 7, 0.16, z);
-    else if (o.t === 'marker') groundShadow(o.x, o.y, 0.95, 3.5, 0.16, z);
-    else if (o.t === 'tyres') groundShadow(o.x, o.y, 1.6, 3.5, 0.16, z);
-    else if (o.t === 'gantry') { groundShadow(o.lx, o.ly, 0.5, 16, 0.16, z); groundShadow(o.rx, o.ry, 0.5, 16, 0.16, z); }
+    if (o.t === 'tree') groundShadow(o.x, o.y, o.r * 0.95, o.h * 3, 0.18);
+    else if (o.t === 'board') groundShadow(o.x, o.y, 3, 7, 0.16);
+    else if (o.t === 'marker') groundShadow(o.x, o.y, 0.95, 3.5, 0.16);
+    else if (o.t === 'tyres') groundShadow(o.x, o.y, 1.6, 3.5, 0.16);
+    else if (o.t === 'gantry') { groundShadow(o.lx, o.ly, 0.5, 16, 0.16); groundShadow(o.rx, o.ry, 0.5, 16, 0.16); }
     else if (o.t === 'stand') {
       const hw = o.w / 2, L = 17;
       fillPolyW([
-        { x: o.x - o.tx * hw, y: o.y - o.ty * hw, z }, { x: o.x + o.tx * hw, y: o.y + o.ty * hw, z },
-        { x: o.x + o.tx * hw + SHD_X * L, y: o.y + o.ty * hw + SHD_Y * L, z },
-        { x: o.x - o.tx * hw + SHD_X * L, y: o.y - o.ty * hw + SHD_Y * L, z },
+        { x: o.x - o.tx * hw, y: o.y - o.ty * hw }, { x: o.x + o.tx * hw, y: o.y + o.ty * hw },
+        { x: o.x + o.tx * hw + SHD_X * L, y: o.y + o.ty * hw + SHD_Y * L },
+        { x: o.x - o.tx * hw + SHD_X * L, y: o.y - o.ty * hw + SHD_Y * L },
       ], 'rgba(14,18,28,.20)');
     }
   }
   // pass 2: the props themselves
-  const elev = track.hasElev;
   for (const { o, p } of list) {
     // fade props in over the last stretch of draw distance, so they emerge from the haze
     // instead of popping into existence at the cull line
     ctx.globalAlpha = Math.max(0, Math.min(1, (360 - p.fwd) / 110));
-    // blind-crest occlusion: if this prop's ground anchor sits below the crest silhouette at its
-    // distance, clip its billboard to the crest line so it sinks behind the hill (not floats over it)
-    let clipped = false;
-    if (elev) { const cy = clipYAt(p.fwd); if (isFinite(cy) && p.y >= cy) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, cy); ctx.clip(); clipped = true; } }
     if (o.t === 'tree') drawTree(o, p);
     else if (o.t === 'board') drawBoard(o, p);
     else if (o.t === 'marker') drawMarker(o, p);
@@ -1365,14 +1276,13 @@ function drawScenery() {
     else if (o.t === 'wall') drawWall(o, p);
     else if (o.t === 'tyres') drawTyres(o, p);
     else drawStand(o, p);
-    if (clipped) ctx.restore();
   }
   ctx.globalAlpha = 1;
 }
 // low pit wall: an extruded face between two ground points, with a bright top cap and a
 // sponsor stripe — frames the pit straight the way the grandstands alone can't
 function drawWall(o, p) {
-  const A = project(o.x1, o.y1, o.z), B = project(o.x2, o.y2, o.z);
+  const A = project(o.x1, o.y1), B = project(o.x2, o.y2);
   if (!A || !B) return;
   const hA = 1.05 * A.sc, hB = 1.05 * B.sc;
   ctx.fillStyle = '#a7adb9';
@@ -1414,7 +1324,7 @@ function drawMarker(o, p) {
 // Pillar bases are ground-projected; heights rise in metres scaled by each base's own
 // pixels-per-metre, so perspective stays correct as you drive at (and under) it.
 function drawGantry(o, p) {
-  const L = project(o.lx, o.ly, o.z), R = project(o.rx, o.ry, o.z);
+  const L = project(o.lx, o.ly), R = project(o.rx, o.ry);
   if (!L || !R) return;                                     // passing under / behind — gone this frame
   const GH = 7.5, BT = 1.4;                                 // clearance + beam thickness (metres)
   const pw = Math.max(2, 0.45 * (L.sc + R.sc) / 2);
@@ -1611,18 +1521,13 @@ function drawStand(o, p) {
 // rival cars as ground-anchored billboards: project each to its tyre-contact point and scale by
 // distance (project's `sc` = pixels-per-metre there). Drawn far -> near so nearer cars overlap.
 function drawCars() {
-  const list = [], elev = track.hasElev;
-  for (const c of aiCars) { const cz = groundZ(c.x, c.y, c.nearIdx); const p = project(c.x, c.y, cz); if (p && p.fwd < 280) { p.gz = cz; list.push({ c, p }); } }
+  const list = [];
+  for (const c of aiCars) { const p = project(c.x, c.y); if (p && p.fwd < 280) list.push({ c, p }); }
   list.sort((a, b) => b.p.fwd - a.p.fwd);
   for (const { c, p } of list) {
     ctx.globalAlpha = Math.max(0, Math.min(1, (280 - p.fwd) / 70));   // emerge from the haze, no pop-in
-    // blind-crest occlusion: a rival beyond a crest is trimmed to the crest line so it disappears
-    // over the top and is progressively revealed as the player crests (shadow + sprite together)
-    let clipped = false;
-    if (elev) { const cy = clipYAt(p.fwd); if (isFinite(cy) && p.y >= cy) { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, cy); ctx.clip(); clipped = true; } }
-    groundShadow(c.x, c.y, 1.1, 4.5, 0.18, p.gz);                     // long evening shadow, on the slope
+    groundShadow(c.x, c.y, 1.1, 4.5, 0.18);                           // long evening shadow
     drawCarSprite(c, p);
-    if (clipped) ctx.restore();
   }
   ctx.globalAlpha = 1;
 }
