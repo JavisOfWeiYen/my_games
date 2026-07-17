@@ -151,6 +151,8 @@ const PIT_ENTRY = -10, PIT_EXIT = 24;            // segment range (relative to i
 const PIT_BOX = 8;                               // segment of the stop box
 const PIT_SPEED = 25;                            // lane speed cap, m/s (~90 km/h) — arcade-fast so a stop costs ~10 s, not 25
 const PIT_TIME = 2.6;                            // seconds stationary for a tyre change
+const PIT_WEAR = 0.6;                            // AI tyre-wear trigger: a stop needs the set worn past this
+const LONG_RACE = 6;                             // laps at/above which AI run ROUTINE strategy stops (above every shipped track: short races never auto-pit)
 
 // ----- Phase 1 systems -----
 const FUEL_MASS = 110;                           // kg of fuel in a full tank, added to MASS (light car = faster)
@@ -177,6 +179,9 @@ function makeCar(opts = {}) {
     nearIdx: 0,                                        // this car's cached nearest-centreline index
     _offT: 0, _recovering: false,                      // anti-pin: off-track time (with hysteresis) + latched marshal-recovery flag
     _stallT: 0, _progS: 0,                              // anti-pin: time with near-zero net arc-progress while off-line + progress checkpoint
+    // AI pit state (per car; the PLAYER pits via the globals nextCompound/pitStop/pitDone instead):
+    // _pitState 0 = racing, 'in' = committed to the lane / heading for the box, 'out' = serviced, rejoining.
+    _pitState: 0, _pitStop: 0, _pitNext: null, _pitTargetS: 0, _inPit: false, _wearRef: 0,
     lap: 1, lastS: 0, s: 0,                            // race progress, per car (for lap count + standings)
     ai: !!opts.ai, name: opts.name || 'You', col: opts.col || '#ffd24a',
     // livery for the first-person car sprite: { base bodywork, accent stripe/details, wing }
@@ -551,6 +556,7 @@ function resetCar(car) {
   car.tyre.wear = 0; car.tyre.temp = 80;        // fresh set of the current compound
   car.fuel = 1; car.ers = 0.7; car.ersOn = false; car.drs = 0;
   car.nearIdx = 0; car._offT = 0; car._recovering = false; car._stallT = 0; car._progS = 0;
+  car._pitState = 0; car._pitStop = 0; car._pitNext = null; car._pitTargetS = 0; car._inPit = false; car._wearRef = 0;
 }
 // ease a car's throttle/brake toward its input source (human keys or, later, an AI driver)
 function applyInput(car, input, dt) {
@@ -659,6 +665,7 @@ function step(car, input, dt) {
   // keep the along-wall (tangential) part, so a nose-in crash can still be driven
   // out of instead of dead-stopping the car against the wall forever.
   const lim = querySurface(car.x, car.y, car), LIMIT = HALF_W + 12;
+  const inPitZone = !!(track.pit && track.pit.off[car.nearIdx] > 0.5);   // within the pit-lane index span (entry ramp..exit ramp)
   if (Math.abs(lim.lat) > LIMIT) {
     const sg = lim.lat > 0 ? 1 : -1, lp = lim.p;
     car.x = lp.x + lp.nx * sg * LIMIT; car.y = lp.y + lp.ny * sg * LIMIT;
@@ -682,12 +689,19 @@ function step(car, input, dt) {
   if (dS < -track.total / 2) dS += track.total; else if (dS > track.total / 2) dS -= track.total;
   if ((lim.surf !== 'grass' && Math.abs(lim.lat) < HALF_W * 0.8) || dS > 4) { car._stallT = 0; car._progS = lim.s; }
   else car._stallT += dt;
+  // a car committed to a pit stop is DELIBERATELY off the racing line and slow (peeling into the lane
+  // across the verge, crawling to the box, or on the jacks). Never let the marshal treat that as pinned —
+  // it would drag the car off its line/stop. Freeze the anti-pin accumulators on pit asphalt (covers the
+  // player's stop too), or for a pitting car anywhere in the pit-lane zone (so the verge crossing is safe).
+  // Scoped to the zone so a pitting car that spins off in a NORMAL corner still gets marshal recovery.
+  if (lim.surf === 'pit' || (car._pitState && inPitZone)) { car._offT = 0; car._stallT = 0; car._progS = lim.s; car._recovering = false; }
   // LATCH recovery on when either signal trips, and keep it latched (through surface flicker and any
   // re-contact) until the car is genuinely back on the racing line (|lat| well inside the road).
   if (car._offT > 2.2 || car._stallT > 2.5) car._recovering = true;   // active marshal recovery -> also ghosts past solid props / other cars (see sceneryCollide + resolveCollisions)
   if (car._recovering && Math.abs(lim.lat) < HALF_W * 0.8) { car._recovering = false; car._offT = 0; car._stallT = 0; car._progS = lim.s; }
   //   (a) gentle nudge for the low-speed crawl-out case (nose into the wall, throttle grinding).
-  if (lim.surf === 'grass' && Math.hypot(car.vx, car.vy) < 7) {
+  //       Skip it for a pitting car crossing the verge into the lane — that isn't a pin.
+  if (lim.surf === 'grass' && Math.hypot(car.vx, car.vy) < 7 && !(car._pitState && inPitZone)) {
     const lp = lim.p, sg = lim.lat > 0 ? 1 : -1;
     let da = Math.atan2(lp.uy, lp.ux) - car.a; da = Math.atan2(Math.sin(da), Math.cos(da));
     car.a += da * Math.min(1, dt * 2.5);                              // ease the nose back to the track direction
@@ -704,6 +718,20 @@ function step(car, input, dt) {
     let da = Math.atan2(lp.uy, lp.ux) - car.a; da = Math.atan2(Math.sin(da), Math.cos(da));
     car.a += da * Math.min(1, dt * 5);
     car.vx *= 0.9; car.vy *= 0.9; car.av *= 0.5;
+  }
+  // PIT lateral guide: an AI peeling INTO the lane (or easing OUT) is slid laterally onto the lane line at a
+  // bounded rate — the same assisted reposition the marshal uses above, but toward the pit box. Bang-bang
+  // steering alone fishtails on the sharp move across to the lane and scrubs the car to a halt against the pit
+  // wall; this guarantees a clean line past the wall on ANY track. Forward motion stays with the physics (we
+  // shift only the lateral component); the AI still throttles/brakes to crawl in and stop, and steers to keep
+  // the nose down the lane. Player pit is untouched (it never sets _pitState).
+  if (car._pitState && inPitZone) {
+    const lp = lim.p;
+    const tgt = PIT_SIDE * (car._pitState === 'out' ? Math.max(0, track.pit.off[car.nearIdx]) : PIT_OFF);
+    const dLat = clamp(tgt - lim.lat, -13 * dt, 13 * dt);          // <=13 m/s lateral slide
+    car.x += lp.nx * dLat; car.y += lp.ny * dLat;                  // shift laterally only (forward position preserved)
+    let da = Math.atan2(lp.uy, lp.ux) - car.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+    car.a += da * Math.min(1, dt * 3);                             // ease the nose down the lane
   }
 
   // skid / smoke when a tyre is sliding
@@ -765,6 +793,22 @@ function aiDriver(c) {
   const lead = Math.max(1, Math.min(N >> 1, Math.round((11 + speed * sk.look) / spacing)));
   const aim = pts[(i + lead) % N];
   let da = Math.atan2(aim.y - c.y, aim.x - c.x) - c.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+  // PIT: steer onto the lane. A solid pit wall sits between the track and the lane alongside the box, with a
+  // gap only over the entry/exit ramps, so on the way IN the car must peel FULLY across before the wall and on
+  // the way OUT ease back along the exit ramp. Pursuit-to-a-point + bang-bang steering fishtails here (scrubbing
+  // the car to a halt at the wall), so use a PATH-FOLLOWER instead: desired heading = lane tangent + a bounded
+  // correction proportional to the lateral error. The correction fades as the error closes, so it converges on
+  // the lane smoothly (no weave) without stalling short — decisive but stable at any speed or track spacing.
+  if (c._pitState && track.pit) {
+    const plead = Math.max(1, Math.round(20 / spacing)), po = track.pit.off[(i + plead) % N];   // is the lane just ahead?
+    if (po > 0) {
+      const p = pts[i], curLat = (c.x - p.x) * p.nx + (c.y - p.y) * p.ny;         // signed offset now
+      const tgtLat = PIT_SIDE * (c._pitState === 'in' ? PIT_OFF : Math.max(0, track.pit.off[i]));
+      const corr = clamp((tgtLat - curLat) * PIT_SIDE * 0.05, -0.6, 0.6);         // crab angle toward the lane (rad, bounded)
+      const desired = Math.atan2(p.uy, p.ux) + corr * PIT_SIDE;                   // lane tangent + correction
+      da = Math.atan2(Math.sin(desired - c.a), Math.cos(desired - c.a));
+    }
+  }
   // wider deadband near the line so the car stops twitching the wheel on straights:
   // constant full-lock micro-corrections used to spike car.steer past the DRS gate and
   // snap the wing shut every tick, robbing the AI of its low-drag top speed.
@@ -804,7 +848,87 @@ function aiDriver(c) {
   // drive out of a corner. step() auto-closes DRS under braking/steering, so this is safe.
   if (o.gas && o.brake === 0 && speed > 25) o.drs = 1;
   if (o.gas && c.ers > 0.05) o.boost = 1;
+  // PIT speed control (overlaid on the racing inputs above): on the approach, bleed speed so the car
+  // arrives no faster than it can stop; once physically in the lane, obey the limiter and creep to the box
+  // slot, then hold the brakes so it never rolls back out unserviced. Corner braking above still applies.
+  if (c._pitState === 'in' && track.pit) {
+    const total = track.total;
+    let ds = c._pitTargetS - c.s;                                   // arc gap to this car's box slot
+    if (ds > total / 2) ds -= total; else if (ds < -total / 2) ds += total;
+    let laneHere = false;                                           // is the car actually ON pit asphalt here?
+    if (track.pit.off[i] > 0.5) {
+      const p = pts[i], lat = (c.x - p.x) * p.nx + (c.y - p.y) * p.ny;
+      laneHere = Math.abs(lat) > HALF_W && Math.abs(lat * PIT_SIDE - track.pit.off[i]) < 2.6;
+    }
+    if (!laneHere && ds < 0) ds += total;                           // a slot behind us on the racing line is a lap away
+    o.boost = 0; o.drs = 0;                                         // no ERS/DRS in the pit lane
+    if (laneHere) {                                                 // fully on pit asphalt: roll in at limiter speed,
+      const vT = Math.min(PIT_SPEED, Math.sqrt(2 * 6 * Math.max(0, ds)));   // then ease to a dead stop at the slot
+      if (speed > vT + 0.5) { o.gas = 0; o.brake = 1; }
+      else if (speed < vT - 1.5 && ds > 1) { o.gas = 1; o.brake = 0; }
+      else { o.gas = 0; o.brake = 0; }
+    } else if (track.pit.off[i] > 0.5) {                            // in the ramp zone, peeling across to the lane: hold a
+      if (speed > 11) { o.gas = 0; o.brake = 1; }                   // low crawl so full steering lock + lateral grip are
+      else if (speed < 8) { o.gas = 1; o.brake = 0; }               // available to cut across before the pit wall (index 2)
+      else { o.gas = 0; o.brake = 0; }
+    } else if (ds < 250) {                                          // approach: bleed to lane speed EARLY, so braking is
+      if (speed > PIT_SPEED + 1) { o.gas = 0; o.brake = 1; }        // finished BEFORE the peel zone (hard braking there
+      else if (speed < PIT_SPEED - 2) { o.gas = 1; o.brake = 0; }   // steals the lateral grip needed to turn in)
+      else { o.gas = 0; o.brake = 0; }
+    }
+    // ds >= 250 and not in the pit zone yet: still far out -> leave the normal racing inputs untouched
+  }
   return o;
+}
+// which fresh compound to bolt on, given laps still to run: soft to sprint to the flag, hard for a long haul.
+function pitCompound(lapsLeft) {
+  if (lapsLeft <= 1) return 'soft';
+  if (lapsLeft <= 3) return 'medium';
+  return 'hard';
+}
+// AI pit-stop state machine (per car), the rival equivalent of updatePit(): plan a stop when the tyres are
+// gone and it pays to change, hold the car in the box for PIT_TIME while the crew works, bolt on fresh
+// rubber, release. Steering/braking INTO the box is done by aiDriver() reading _pitState; this owns the
+// decision, the service timer and the compound swap. Never runs during qualifying.
+function updateAiPit(c, dt) {
+  const pit = track.pit;
+  if (!pit || qualifying) { c._inPit = false; return; }
+  const q = querySurface(c.x, c.y, c);
+  const o = pit.off[c.nearIdx];
+  const inLane = o > 0.5 && Math.abs(q.lat) > HALF_W && Math.abs(q.lat * PIT_SIDE - o) < 2.6;
+  c._inPit = inLane;                                       // gates collision + marshal handling while pitting
+  if (c._pitStop > 0) {                                    // on the jacks: crew working, then a fresh set
+    c.vx = c.vy = c.av = 0;
+    c._pitStop -= dt;
+    if (c._pitStop <= 0) {
+      c._pitStop = 0;
+      c.tyre.compound = c._pitNext;
+      c.tyre.wear = 0; c.tyre.temp = 80;
+      c._pitState = 'out';                                 // serviced -> drive back out and rejoin
+    }
+    return;
+  }
+  if (c._pitState === 'out') { if (!inLane) c._pitState = 0; return; }   // clear once back on the racing surface
+  if (c._pitState === 'in') {                              // stopped in the lane body -> start the service
+    if (inLane && o > PIT_OFF * 0.5 && Math.hypot(c.vx, c.vy) < 2.5) c._pitStop = PIT_TIME;
+    return;
+  }
+  // no plan yet -> decide whether to pit. Medium tyres wear ~a full set per lap here, so on the shipped 2–4
+  // lap tracks a set can't be "saved" for the finish — matching the design + the base game, NO AI pits on a
+  // normal short race (the tyres just fade, as before). Two things DO warrant a stop, both needing laps left
+  // for it to pay back the ~10 s cost: (a) a set SUDDENLY spent — wear spiking far faster than it ever does in
+  // normal running (a blister/flat-spot, or the test forcing high wear) -> pit unless it's the final lap;
+  // (b) a genuinely long race (track.laps high) where routine strategy stops make sense. LONG_RACE is set
+  // above any shipped track, so routine stops only ever appear in longer events the feature is meant for.
+  const lapsLeft = track.laps - c.lap, wear = c.tyre.wear;
+  const spiked = wear - c._wearRef > 0.05;                 // sudden degradation — never happens in normal wear
+  c._wearRef = wear;
+  if (wear >= PIT_WEAR && ((spiked && lapsLeft >= 1) || (track.laps >= LONG_RACE && lapsLeft >= 2))) {
+    c._pitState = 'in';
+    c._pitNext = pitCompound(lapsLeft);
+    const slot = Math.max(0, aiCars.indexOf(c));          // stagger stop points down the lane BODY (box and beyond) so
+    c._pitTargetS = ((pit.boxS + slot * 5) % track.total + track.total) % track.total;   // co-pitters queue nose-to-tail, not stack, and none stops on the entry ramp
+  }
 }
 
 // ===== 6. CAMERA (first-person / cockpit: at the driver, eye level) + ground projection =====
@@ -1936,6 +2060,7 @@ function resolveCollisions() {
     for (let b = a + 1; b < allCars.length; b++) {
       const A = allCars[a], B = allCars[b];
       if (A._recovering || B._recovering) continue;    // a marshal-dragged car ghosts other cars too, so a collision can't shove it back off mid-recovery
+      if (A._inPit || B._inPit) continue;              // cars in the pit lane don't collide -> queued/stopped pitters never pile up or get shoved off the jacks
       const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy), min = CAR_R * 2;
       if (d >= min || d < 1e-4) continue;
       const nx = dx / d, ny = dy / d, push = (min - d) * 0.5;
@@ -2047,6 +2172,7 @@ function updatePit(dt) {
   const q = querySurface(car.x, car.y, car);
   const o = pit.off[car.nearIdx];
   pitLaneNow = o > 0.5 && Math.abs(q.lat) > HALF_W && Math.abs(q.lat * PIT_SIDE - o) < 2.6;
+  car._inPit = pitLaneNow;                             // let rivals ghost the player while he's in the lane too
   const nearBox = Math.abs(q.s - pit.boxS) < 5;
   if (pitLaneNow && nearBox && !pitDone && Math.hypot(car.vx, car.vy) < 2.5) pitStop = PIT_TIME;
   if (!nearBox) pitDone = false;
@@ -2133,6 +2259,7 @@ function loop(t) {
       updateProgress(car, true);
       updatePit(dt);
       for (const a of aiCars) updateProgress(a, false);
+      for (const a of aiCars) updateAiPit(a, dt);        // rival pit stops (plan / crawl to box / service / rejoin)
       recordTelemetry(dt);
     }
   }
@@ -2233,6 +2360,7 @@ function beginRace(gridOrder) {
   respawnScenery();                                  // all hoardings standing at the start
   resetSectors(); bestSec = [0, 0, 0];               // sector bests are per race session
   pitStop = 0; pitDone = false; pitLaneNow = false; nextCompound = car.tyre.compound;
+  for (const c of allCars) { c._pitState = 0; c._pitStop = 0; c._pitNext = null; c._pitTargetS = 0; c._inPit = false; c._wearRef = 0; }  // clear any mid-pit AI state
 }
 // start a qualifying session: grid the whole field in default order, arm the same countdown, and run
 // laps as usual — but with the quali flag set so timing/end/grid-order all take the quali path.
