@@ -58,8 +58,9 @@
     text-transform: none; line-height: 1.25; cursor: pointer; }
   #overlay .tchip small { display: block; color: #7d8db0; font-weight: 400; font-size: 11px; margin-top: 2px; }
   #overlay .tchip.on { border-color: #46e0a0; background: rgba(70,224,160,.14); color: #eaf0ff; }
-  #oppPick, #diffPick, #qualiPick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
-  #oppPick .picklabel, #diffPick .picklabel, #qualiPick .picklabel { color: #7d8db0; font-size: 12px; margin-right: 4px; letter-spacing: .04em; }
+  #oppPick, #diffPick, #qualiPick, #modePick, #champBar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  #champBar:empty { display: none; }
+  #oppPick .picklabel, #diffPick .picklabel, #qualiPick .picklabel, #modePick .picklabel, #champBar .picklabel { color: #7d8db0; font-size: 12px; margin-right: 4px; letter-spacing: .04em; }
   #overlay .nchip { border: 1px solid rgba(120,135,165,.4); border-radius: 8px; background: rgba(20,26,40,.6);
     color: #cdd6ea; width: 30px; height: 30px; font-family: inherit; font-size: 13px; font-weight: 700;
     letter-spacing: 0; text-transform: none; cursor: pointer; padding: 0; }
@@ -100,7 +101,9 @@
     <h1>Apex GP</h1>
     <p>A first-person racing <b>simulator</b> — real grip, weight transfer and slides, with tyres that wear and heat up, ERS boost, DRS and a draining fuel load. Brake early, hit the apex, feed the throttle out of the corner. 第一人稱賽車模擬：真實抓地與配重，輪胎會磨耗升溫、ERS 加速、DRS、油量遞減。抓煞車點、切 Apex、出彎補油。</p>
     <p class="keys">⌨️ W/↑ throttle · S/↓ brake · A/D ←/→ steer · Space handbrake · <b>Shift ERS</b> · <b>F DRS</b> · <b>T 選進站胎 pit tyre</b> · R reset · P pause<br>📱 on-screen buttons (incl. ERS / DRS / 胎) · 🔧 進 PIT 停妥即換胎 stop in the pit box to change tyres</p>
+    <div id="modePick"></div>
     <div id="trackPick"></div>
+    <div id="champBar"></div>
     <div id="oppPick"></div>
     <div id="diffPick"></div>
     <div id="qualiPick"></div>
@@ -248,6 +251,25 @@ function setDifficulty(d) { difficulty = (d === 'hard') ? 'hard' : 'easy'; apply
 // behaviour (player spliced mid-pack, straight to the race).
 let qualiOn = (localStorage.getItem('apexgp-quali') ?? 'on') !== 'off';
 function setQuali(on) { qualiOn = !!on; try { localStorage.setItem('apexgp-quali', qualiOn ? 'on' : 'off'); } catch (e) {} }
+// championship (錦標賽): the 7 TRACKS strung into a season, one round each. Single-race stays the
+// default; championship only kicks in when the menu MODE picker selects it. See §11 for the flow.
+// Points by finishing position (P1..P8); with fewer cars the tail entries simply aren't awarded.
+const CHAMP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4];
+let champMode = false;      // menu MODE toggle: false = 單場 Single Race (default), true = 錦標賽 Championship
+// active season state (persisted as ONE key so it resumes after a reload):
+//   round  = rounds COMPLETED so far = index of the round to play next (0..7)
+//   pts    = cumulative championship points keyed by car name ('You' + each rival)
+//   diff/rivals = the difficulty + rival count the season started with (re-applied on resume so it stays consistent)
+let champ = null;
+let champScreen = false;    // showing the end-of-season champion celebration
+let champAwarded = false;   // this round's points already banked? (guards R-restart double-award)
+let champGain = {};         // per-car points gained in the round just finished (for the results panel)
+function loadChamp() {
+  try { const j = JSON.parse(localStorage.getItem('apexgp-champ') || 'null');
+    if (j && typeof j.round === 'number' && j.pts) return j; } catch (e) {}
+  return null;
+}
+function saveChamp() { try { if (champ) localStorage.setItem('apexgp-champ', JSON.stringify(champ)); else localStorage.removeItem('apexgp-champ'); } catch (e) {} }
 let track = null;
 let lap = 0, lapStart = 0, lapNow = 0, best = 0, lastS = 0, started = 0;
 let running = false, paused = false, perf = 0, lastT = 0;
@@ -1033,7 +1055,7 @@ function render() {
   drawHud();
   if (countdown > 0) drawStartLights();
   else if (goFlash > 0) drawGo();
-  if (finished) drawResults();
+  if (finished) { if (champScreen) drawChampScreen(); else if (champMode) drawChampResults(); else drawResults(); }
   if (qualiClass) drawQualiResults();
 }
 function drawStartLights() {
@@ -1089,6 +1111,87 @@ function drawResults() {
   ctx.fillText('BEST 最佳單圈 ' + fmt(best), cx, y + 18);
   ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif';
   ctx.fillText('按 R 再比一場　·　R to race again', cx, y + 42);
+  ctx.textAlign = 'left';
+}
+// championship results panel: this round's finishing order + points gained, then the cumulative
+// championship table (player row highlighted). Enter goes to the next round (see advanceChamp).
+function drawChampResults() {
+  ctx.fillStyle = 'rgba(6,9,15,.86)'; ctx.fillRect(0, 0, W, H);
+  const cx = W / 2; let y = Math.max(66, H * 0.1);   // clear the top button bar
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#eaf0ff'; ctx.font = '900 26px system-ui, sans-serif';
+  ctx.fillText('🏁 完賽 Round ' + champ.round + '/' + TRACKS.length, cx, y);   // champ.round = the round just completed
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 13px system-ui, sans-serif';
+  ctx.fillText(track.name + ' · 本站積分 points this round', cx, y + 20);
+  y += 42;
+  const w = Math.min(460, W * 0.9), x0 = cx - w / 2;
+  const n = (standings || []).length;
+  const rh = Math.min(30, Math.max(19, (H * 0.32) / Math.max(1, n)));
+  (standings || []).forEach((c, i) => {
+    const isP = c === car, gain = champGain[c.name] || 0;
+    ctx.fillStyle = isP ? 'rgba(70,224,160,.18)' : 'rgba(20,26,40,.6)'; rrectP(x0, y, w, rh - 5, 7); ctx.fill();
+    if (isP) { ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = 1.4; ctx.stroke(); }
+    ctx.textAlign = 'left'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#eaf0ff'; ctx.font = '800 14px system-ui, sans-serif';
+    ctx.fillText('P' + (i + 1), x0 + 12, y + rh / 2 + 2);
+    ctx.fillStyle = c.col; ctx.beginPath(); ctx.arc(x0 + 50, y + rh / 2 - 2, 5, 0, 7); ctx.fill();
+    ctx.fillStyle = isP ? '#46e0a0' : '#dbe3f2'; ctx.font = '700 13px system-ui, sans-serif';
+    ctx.fillText(isP ? 'YOU 你' : c.name, x0 + 62, y + rh / 2 + 2);
+    ctx.textAlign = 'right'; ctx.fillStyle = gain ? '#ffd24a' : '#6f80a0'; ctx.font = '800 13px system-ui, sans-serif';
+    ctx.fillText(gain ? ('+' + gain) : '—', x0 + w - 12, y + rh / 2 + 2);
+    y += rh;
+  });
+  y += 16;
+  ctx.textAlign = 'center'; ctx.fillStyle = '#9fb0cf'; ctx.font = '700 13px system-ui, sans-serif';
+  ctx.fillText('🏆 錦標賽積分榜 CHAMPIONSHIP', cx, y); y += 18;
+  const table = champTable();
+  const rh2 = Math.min(26, Math.max(17, (H * 0.28) / Math.max(1, table.length)));
+  table.forEach((r, i) => {
+    ctx.fillStyle = r.isP ? 'rgba(70,224,160,.18)' : 'rgba(20,26,40,.6)'; rrectP(x0, y, w, rh2 - 4, 6); ctx.fill();
+    if (r.isP) { ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = 1.3; ctx.stroke(); }
+    ctx.textAlign = 'left'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#eaf0ff'; ctx.font = '800 12px system-ui, sans-serif';
+    ctx.fillText((i + 1) + '.', x0 + 12, y + rh2 / 2 + 2);
+    ctx.fillStyle = r.col; ctx.beginPath(); ctx.arc(x0 + 42, y + rh2 / 2 - 2, 5, 0, 7); ctx.fill();
+    ctx.fillStyle = r.isP ? '#46e0a0' : '#dbe3f2'; ctx.font = '700 12px system-ui, sans-serif';
+    ctx.fillText(r.isP ? 'YOU 你' : r.name, x0 + 54, y + rh2 / 2 + 2);
+    ctx.textAlign = 'right'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#cdd6ea'; ctx.font = '800 12px system-ui, sans-serif';
+    ctx.fillText(r.pts + ' pts', x0 + w - 12, y + rh2 / 2 + 2);
+    y += rh2;
+  });
+  ctx.textAlign = 'center'; ctx.fillStyle = '#7f8ba6'; ctx.font = '600 12px system-ui, sans-serif';
+  const nextTxt = (champ.round >= TRACKS.length) ? '按 Enter 看賽季冠軍　·　ENTER for champion'
+                                                  : '按 Enter 下一站　·　ENTER Next Round';
+  ctx.fillText(nextTxt, cx, y + 20);
+  ctx.textAlign = 'left';
+}
+// end-of-season champion celebration: the champion up top, then the final championship table.
+function drawChampScreen() {
+  ctx.fillStyle = 'rgba(6,9,15,.9)'; ctx.fillRect(0, 0, W, H);
+  const cx = W / 2; let y = Math.max(64, H * 0.14);
+  const table = champTable(), champion = table[0];
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd24a'; ctx.font = '900 30px system-ui, sans-serif';
+  ctx.fillText('🏆 賽季冠軍 CHAMPION', cx, y); y += 40;
+  ctx.fillStyle = champion.col; ctx.beginPath(); ctx.arc(cx, y - 2, 12, 0, 7); ctx.fill(); y += 30;
+  ctx.fillStyle = '#eaf0ff'; ctx.font = '900 26px system-ui, sans-serif';
+  ctx.fillText(champion.isP ? 'YOU 你！' : champion.name, cx, y); y += 22;
+  ctx.fillStyle = '#9fb0cf'; ctx.font = '600 14px system-ui, sans-serif';
+  ctx.fillText(champion.pts + ' pts · ' + TRACKS.length + ' 站賽季 season', cx, y); y += 32;
+  const w = Math.min(440, W * 0.86), x0 = cx - w / 2;
+  const rh = Math.min(32, Math.max(20, (H * 0.44) / Math.max(1, table.length)));
+  table.forEach((r, i) => {
+    ctx.fillStyle = r.isP ? 'rgba(70,224,160,.18)' : 'rgba(20,26,40,.6)'; rrectP(x0, y, w, rh - 5, 7); ctx.fill();
+    if (r.isP) { ctx.strokeStyle = '#46e0a0'; ctx.lineWidth = 1.4; ctx.stroke(); }
+    ctx.textAlign = 'left'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#eaf0ff'; ctx.font = '800 15px system-ui, sans-serif';
+    ctx.fillText((i + 1) + '.', x0 + 14, y + rh / 2 + 2);
+    ctx.fillStyle = r.col; ctx.beginPath(); ctx.arc(x0 + 48, y + rh / 2 - 2, 6, 0, 7); ctx.fill();
+    ctx.fillStyle = r.isP ? '#46e0a0' : '#dbe3f2'; ctx.font = '700 14px system-ui, sans-serif';
+    ctx.fillText(r.isP ? 'YOU 你' : r.name, x0 + 62, y + rh / 2 + 2);
+    ctx.textAlign = 'right'; ctx.fillStyle = i === 0 ? '#ffd24a' : '#cdd6ea'; ctx.font = '800 14px system-ui, sans-serif';
+    ctx.fillText(r.pts + ' pts', x0 + w - 14, y + rh / 2 + 2);
+    y += rh;
+  });
+  ctx.textAlign = 'center'; ctx.fillStyle = '#7f8ba6'; ctx.font = '600 13px system-ui, sans-serif';
+  ctx.fillText('按 Enter 回主選單　·　ENTER for menu', cx, y + 22);
   ctx.textAlign = 'left';
 }
 // qualifying classification panel: every car's best quali lap and the grid slot it earned.
@@ -2181,6 +2284,34 @@ function finishRace() {
   finished = true;
   const prog = c => c.lap * track.total + c.s;
   standings = allCars.slice().sort((a, b) => prog(b) - prog(a));   // final order by distance covered
+  // championship: bank this round's points ONCE (first finish). A restarted round awards on its
+  // eventual finish; champAwarded (reset only when a NEW round begins) guards against double-award.
+  if (champMode && champ && !champAwarded) {
+    awardChampPoints();
+    champAwarded = true;
+    champ.round++;          // this round is now complete; champ.round points at the next round
+    saveChamp();
+  }
+}
+// award championship points by finishing position, and remember each car's gain for the results panel
+function awardChampPoints() {
+  champGain = {};
+  standings.forEach((c, i) => {
+    const p = CHAMP_POINTS[i] || 0;
+    champGain[c.name] = p;
+    if (p) champ.pts[c.name] = (champ.pts[c.name] || 0) + p;
+  });
+}
+// the cumulative championship table: every car with points OR currently in the field, sorted by total
+function champTable() {
+  const names = new Set(Object.keys(champ ? champ.pts : {}));
+  for (const c of allCars) names.add(c.name);
+  const rows = [...names].map(nm => {
+    const c = allCars.find(x => x.name === nm);
+    return { name: nm, col: c ? c.col : '#8892a6', pts: (champ && champ.pts[nm]) || 0, isP: nm === car.name };
+  });
+  rows.sort((a, b) => b.pts - a.pts || (b.isP ? 1 : 0) - (a.isP ? 1 : 0));
+  return rows;
 }
 // quali classification: cars with a timed lap sorted fastest-first; cars with none go to the back —
 // AI keep their field order, the player (if he never set a time) starts at the very back.
@@ -2302,13 +2433,14 @@ function gridCars(order) {
     c.nearIdx = idx; c.lap = 0; c.s = p.s; c.lastS = p.s;
   });
 }
-function loadTrack(i) {
+function loadTrack(i, persist = true) {
   trackIndex = (i % TRACKS.length + TRACKS.length) % TRACKS.length;
   buildTrack(TRACKS[trackIndex]);
   gridCars(); camYaw = car.a;
   lap = 1; lapStart = perf; lapNow = 0; lastS = 0;
   best = loadBest(trackIndex);
-  try { localStorage.setItem('apexgp-track', trackIndex); } catch (e) {}
+  // championship round-loads pass persist=false so they don't overwrite the single-race track pick
+  if (persist) try { localStorage.setItem('apexgp-track', trackIndex); } catch (e) {}
 }
 const trackPick = $('#trackPick');
 function renderTrackPicker() {
@@ -2345,11 +2477,50 @@ function renderQualiPicker() {
     [[true, '開 ON'], [false, '關 OFF']].map(([v, label]) =>
       `<button class="tchip${v === qualiOn ? ' on' : ''}" data-q="${v ? 1 : 0}">${label}</button>`).join('');
 }
-// the start button reads QUALIFY when quali is on, Drive when off
-function updateStartLabel() { const b = $('#ovBtn'); if (b) b.textContent = qualiOn ? '🏁 開始排位 QUALIFY' : '▶ Drive 開始'; }
+// the start button: single race reads QUALIFY / Drive; championship reads 繼續 / 開始 with the round.
+function updateStartLabel() {
+  const b = $('#ovBtn'); if (!b) return;
+  if (champMode) {
+    const r = (champ && champ.round < TRACKS.length) ? champ.round : 0;
+    b.textContent = (champ && champ.round > 0 && champ.round < TRACKS.length)
+      ? ('繼續錦標賽 Round ' + (r + 1) + '/' + TRACKS.length)
+      : '🏆 開始錦標賽 Championship';
+  } else b.textContent = qualiOn ? '🏁 開始排位 QUALIFY' : '▶ Drive 開始';
+}
 qualiPick.addEventListener('click', e => {
   const btn = e.target.closest('.tchip'); if (!btn) return;
   setQuali(btn.dataset.q === '1'); renderQualiPicker(); updateStartLabel();
+});
+// MODE picker: 單場 Single Race (default) / 錦標賽 Championship. Championship hides the track picker
+// (the round locks the track) and shows the season bar instead; see renderChampBar.
+const modePick = $('#modePick'), champBar = $('#champBar');
+function renderModePicker() {
+  modePick.innerHTML = '<span class="picklabel">模式 MODE</span>' +
+    [[false, '單場 Single Race'], [true, '錦標賽 Championship']].map(([v, label]) =>
+      `<button class="tchip${v === champMode ? ' on' : ''}" data-m="${v ? 1 : 0}">${label}</button>`).join('');
+}
+// the season bar (championship only): the round to play + a secondary New Season button once a season is under way.
+function renderChampBar() {
+  trackPick.style.display = champMode ? 'none' : '';   // the round locks the track in championship
+  if (!champMode) { champBar.innerHTML = ''; return; }
+  const r = (champ && champ.round < TRACKS.length) ? champ.round : 0;
+  const inProg = champ && champ.round > 0 && champ.round < TRACKS.length;
+  champBar.innerHTML =
+    `<span class="picklabel">🏆 Round ${r + 1}/${TRACKS.length} · ${TRACKS[r].name}</span>` +
+    (inProg ? `<button class="tchip" id="champNew">🆕 新賽季 New Season</button>` : '');
+}
+modePick.addEventListener('click', e => {
+  const btn = e.target.closest('.tchip'); if (!btn) return;
+  champMode = btn.dataset.m === '1';
+  // live-preview the right track behind the overlay: the round track (championship) or the saved single pick
+  if (champMode) loadTrack((champ && champ.round < TRACKS.length) ? champ.round : 0, false);
+  else loadTrack(+(localStorage.getItem('apexgp-track') ?? 1));
+  renderModePicker(); renderChampBar(); renderTrackPicker(); updateStartLabel();
+});
+champBar.addEventListener('click', e => {
+  if (!e.target.closest('#champNew')) return;
+  champ = null; saveChamp(); loadTrack(0, false);   // abandon the season; preview round 1 (Apex GP)
+  renderChampBar(); updateStartLabel();
 });
 // grid the field and arm the 3-second start lights; the loop holds the cars until the lights go out
 function beginRace(gridOrder) {
@@ -2370,9 +2541,37 @@ function beginQuali() {
   beginRace(allCars.slice());                        // grid in field order (order is irrelevant — all cars run)
 }
 function startGame() {
+  champScreen = false;
   if (qualiOn) beginQuali();                         // quali ON: earn the grid first
   else { qualifying = false; beginRace(); }          // quali OFF: straight to the race, player mid-pack
   initAudio(); $('#overlay').classList.add('hidden'); running = true; paused = false; started = 1;
+}
+// menu Start dispatcher: single race, or a championship round (see startChampRound).
+function startFromMenu() { if (champMode) startChampRound(); else startGame(); }
+// begin / resume a championship round: lock the track to champ.round, re-apply the season's
+// difficulty + rival count, then run it exactly like a single race (quali first if enabled).
+function startChampRound() {
+  if (champ && champ.round >= TRACKS.length) champ = null;          // a finished season -> start a fresh one
+  if (!champ) champ = { round: 0, pts: {}, diff: difficulty, rivals: numRivals };
+  setDifficulty(champ.diff); setRivals(champ.rivals);               // keep the season consistent (re-grids too)
+  loadTrack(champ.round, false);                                    // round track (don't clobber the single-race pick)
+  champAwarded = false;                                             // a fresh round can award again
+  saveChamp();                                                      // persist so the season resumes even before it finishes
+  startGame();
+}
+// Enter / button on a championship results panel or the champion screen.
+function advanceChamp() {
+  if (champScreen) { endSeason(); return; }                         // champion screen -> back to the menu
+  if (champ && champ.round >= TRACKS.length) { champScreen = true; return; }   // last round done -> celebrate
+  startChampRound();                                                // otherwise: next round
+}
+// close out a completed season: clear it and return to the menu (the menu then offers a fresh season).
+function endSeason() {
+  champScreen = false; finished = false; standings = null;
+  champ = null; saveChamp();
+  started = 0; running = false; paused = false;
+  $('#overlay').classList.remove('hidden');
+  renderModePicker(); renderChampBar(); updateStartLabel();
 }
 // Enter on the quali results panel: race with the grid quali produced.
 function startRaceFromQuali() {
@@ -2380,13 +2579,13 @@ function startRaceFromQuali() {
   beginRace(qualiOrder); running = true; paused = false;
 }
 // R restart: re-race the SAME grid (from quali if there was one, else the default splice). Never re-runs quali.
-function resetToStart() { qualiClass = null; qualifying = false; beginRace(qualiOrder); running = true; paused = false; }
+function resetToStart() { if (champScreen) return; qualiClass = null; qualifying = false; beginRace(qualiOrder); running = true; paused = false; }
 function togglePause() {
   if (!started || !running) return; paused = !paused; const ov = $('#overlay');
   if (paused) { ov.querySelector('h1').textContent = 'Paused'; ov.querySelector('p').innerHTML = 'Take a breather. 暫停中'; ov.querySelector('#ovBtn').textContent = '▶ Resume 繼續'; ov.classList.remove('hidden'); }
   else ov.classList.add('hidden');
 }
-$('#ovBtn').addEventListener('click', () => { if (paused) togglePause(); else startGame(); });
+$('#ovBtn').addEventListener('click', () => { if (paused) togglePause(); else startFromMenu(); });
 $('#bReset').addEventListener('click', resetToStart);
 $('#bPause').addEventListener('click', togglePause);
 $('#bTelem').addEventListener('click', exportTelemetry);
@@ -2404,9 +2603,10 @@ addEventListener('keydown', e => {
   if (e.key === 't' || e.key === 'T') { cycleTyre(); e.preventDefault(); return; }
   if (e.key === 'g' || e.key === 'G') { exportTelemetry(); e.preventDefault(); return; }
   if (e.key === 'Enter') {
-    if (!started) { startGame(); return; }                              // menu: start (quali or race)
+    if (!started) { startFromMenu(); return; }                          // menu: start (single race or championship)
     if (qualifying && running) { endQuali(); e.preventDefault(); return; }   // in quali: end the session now
-    if (qualiClass && !running) { startRaceFromQuali(); e.preventDefault(); return; }  // results panel: race
+    if (qualiClass && !running) { startRaceFromQuali(); e.preventDefault(); return; }  // quali panel: race
+    if (finished && champMode) { advanceChamp(); e.preventDefault(); return; }   // championship results/champion: next round / menu
   }
   const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
 });
@@ -2422,7 +2622,19 @@ hold('#bErs', 'boost'); hold('#bDrs', 'drs');
 $('#bTyre').addEventListener('click', cycleTyre);
 
 // ===== start =====
-applyDifficulty(); loadTrack(trackIndex); renderTrackPicker(); renderOppPicker(); renderDiffPicker(); renderQualiPicker(); updateStartLabel(); resize(); requestAnimationFrame(loop);
+// resume an in-progress season if one is saved: default to championship mode and re-apply the
+// season's difficulty + rival count so it stays consistent (§ champ). Single race stays the default otherwise.
+champ = loadChamp();
+if (champ && champ.round < TRACKS.length) {
+  champMode = true;
+  difficulty = (champ.diff === 'hard') ? 'hard' : 'easy';
+  numRivals = Math.max(0, Math.min(ALL_RIVALS.length, champ.rivals | 0));
+  aiCars = ALL_RIVALS.slice(0, numRivals); allCars = [car, ...aiCars];
+}
+applyDifficulty();
+loadTrack(champMode ? champ.round : trackIndex, !champMode);   // championship: preview the round track (don't clobber the single pick)
+renderTrackPicker(); renderOppPicker(); renderDiffPicker(); renderQualiPicker();
+renderModePicker(); renderChampBar(); updateStartLabel(); resize(); requestAnimationFrame(loop);
 </script>
 </body>
 </html>
