@@ -291,6 +291,10 @@ let W = 0, H = 0, dpr = 1, zoom = 8.0, camX = 0, camY = 0, camA = 0, shake = 0;
 const marks = [];            // skid marks (world coords), capped
 const smoke = [];            // tyre-smoke particles, capped
 const input = { gas: 0, brake: 0, left: 0, right: 0, hand: 0, boost: 0, drs: 0 };
+// zero every held control. Called on each race (re)start and on focus loss so a key/button whose
+// keyup/pointerup never arrived (window blurred, or the finish panel swallowed it between rounds)
+// can't leave the car stuck steering into the next round. See beginRace and the blur handler.
+function resetInput() { for (const k in input) input[k] = 0; }
 let grassPat = null, asphaltPat = null;
 // best lap is per-track; it's loaded by loadTrack() once a circuit is chosen.
 
@@ -2524,6 +2528,7 @@ champBar.addEventListener('click', e => {
 });
 // grid the field and arm the 3-second start lights; the loop holds the cars until the lights go out
 function beginRace(gridOrder) {
+  resetInput();                                      // fresh controls every start — no held key carries across rounds
   gridCars(gridOrder); camYaw = car.a;               // gridOrder present -> quali grid; absent -> default splice
   lap = 0; lapStart = perf; lapNow = 0; lastS = 0;   // lap 0 = on the grid; first line crossing -> lap 1
   countdown = 3.2; finished = false; standings = null;
@@ -2611,6 +2616,10 @@ addEventListener('keydown', e => {
   const k = keymap[e.key]; if (k) { input[k] = 1; e.preventDefault(); }
 });
 addEventListener('keyup', e => { const k = keymap[e.key]; if (k) { input[k] = 0; e.preventDefault(); } });
+// focus loss (alt-tab, click-away) drops the keyup that would release a held key — clear controls so
+// the car doesn't keep steering/throttling on a "ghost" key when focus returns.
+addEventListener('blur', resetInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) resetInput(); });
 function hold(sel, key) {
   const el = $(sel);
   const on = e => { e.preventDefault(); input[key] = 1; try { el.setPointerCapture(e.pointerId); } catch (x) {} };
