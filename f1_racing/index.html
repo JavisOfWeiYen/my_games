@@ -40,10 +40,11 @@
 
   #overlay {
     position: absolute; inset: 0; z-index: 9; background: rgba(8,11,18,.86); backdrop-filter: blur(5px);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 24px;
+    display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 24px;
+    overflow-y: auto;   /* the menu outgrew short viewports — scroll instead of clipping the bottom links */
   }
   #overlay.hidden { display: none; }
-  #overlay h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  #overlay h1 { margin: auto 0 0; font-size: 34px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
     background: linear-gradient(90deg,#46e0a0,#5db8ff,#c39bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
   #overlay p { margin: 0; font-size: 14px; line-height: 1.7; color: #9fb0cf; max-width: 460px; }
   #overlay .keys { font-size: 12px; color: #6f80a0; }
@@ -65,7 +66,7 @@
     color: #cdd6ea; width: 30px; height: 30px; font-family: inherit; font-size: 13px; font-weight: 700;
     letter-spacing: 0; text-transform: none; cursor: pointer; padding: 0; }
   #overlay .nchip.on { border-color: #46e0a0; background: rgba(70,224,160,.16); color: #eaf0ff; }
-  #overlay .links { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  #overlay .links { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin: 4px 0 auto; }
   #overlay .links a { color: #9fb0cf; font-size: 13px; text-decoration: none; border-bottom: 1px dotted rgba(159,176,207,.5); }
   #overlay .links a:hover { color: #eaf0ff; border-bottom-color: #eaf0ff; }
 </style>
