@@ -723,7 +723,7 @@ function step(car, input, dt) {
   if (lim.surf === 'pit' || (car._pitState && inPitZone)) { car._offT = 0; car._stallT = 0; car._progS = lim.s; car._recovering = false; }
   // LATCH recovery on when either signal trips, and keep it latched (through surface flicker and any
   // re-contact) until the car is genuinely back on the racing line (|lat| well inside the road).
-  if (car._offT > 2.2 || car._stallT > 2.5) car._recovering = true;   // active marshal recovery -> also ghosts past solid props / other cars (see sceneryCollide + resolveCollisions)
+  if (car._offT > 5.0 || car._stallT > 5.0) car._recovering = true;   // active marshal recovery -> also ghosts past solid props / other cars (see sceneryCollide + resolveCollisions)
   if (car._recovering && Math.abs(lim.lat) < HALF_W * 0.8) { car._recovering = false; car._offT = 0; car._stallT = 0; car._progS = lim.s; }
   //   (a) gentle nudge for the low-speed crawl-out case (nose into the wall, throttle grinding).
   //       Skip it for a pitting car crossing the verge into the lane — that isn't a pin.
