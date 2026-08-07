@@ -31,6 +31,7 @@
   .analogy b{ color:var(--ink); }
   svg{ display:block; margin:10px auto; max-width:100%; }
   table{ width:100%; border-collapse:collapse; margin:12px 0; font-size:14.5px; }
+  .scrollx{ overflow-x:auto; }
   th,td{ border:1px solid var(--line); padding:8px 10px; text-align:center; }
   th{ background:#0c1120; color:var(--dim); font-weight:600; }
   .gear{ color:var(--green); font-weight:700; }
@@ -222,6 +223,65 @@
   <div class="key">電腦對手<b>每段直線都會自動開 DRS、放 ERS</b>。所以如果你在直線上沒按 <span class="kbd">Shift</span>(ERS) 和 <span class="kbd">F</span>(DRS)，加速力差快一倍，當然<b>被 AI 拉開、追不上</b>。秘訣：<b>一進直線就按住 Shift + F</b>，出彎也早點放 ERS。</div>
 </div>
 
+<!-- 14 -->
+<h2><span class="n">14</span>輪胎會被磨光：軟硬胎與進站策略</h2>
+<p class="sub">抓地力和耐用度是一組蹺蹺板，這就是「策略」的來源。</p>
+<div class="card">
+  <p class="analogy">輪胎橡膠越軟，越能「咬」進柏油的細縫裡——抓地力越好，但也<b>磨得越快</b>，就像軟的鉛筆芯寫起來又黑又順，卻沒幾下就鈍了。硬橡膠正好相反。所以賽車不是「拿最黏的就好」，而是要選在這場比賽裡<b>總時間最短</b>的那一種。</p>
+  <table>
+    <tr><th>配方</th><th>抓地力</th><th>磨耗速度</th><th>最佳胎溫</th></tr>
+    <tr><td><span style="color:#ff5a5f;font-weight:700">S 軟胎</span></td><td class="gear">1.10 倍</td><td class="warn">1.9 倍（最快磨光）</td><td>約 98°C</td></tr>
+    <tr><td><span style="color:#ffd24a;font-weight:700">M 中性胎</span></td><td>1.00 倍</td><td>1.0 倍</td><td>約 88°C</td></tr>
+    <tr><td><span style="color:#dfe6f2;font-weight:700">H 硬胎</span></td><td>0.92 倍</td><td class="gear">0.55 倍（最耐磨）</td><td>約 78°C</td></tr>
+  </table>
+  <p>注意最右邊那欄：越軟的胎，<b>需要越高的溫度</b>才進入工作區（回到第 8 點）。這也是為什麼軟胎「上手很快、掉得也快」。</p>
+  <div class="key"><b>進站要花時間，所以是一道算術題。</b>遊戲裡進一次維修道，含限速、停車、重新加速，大約要付出 <b>10 秒</b>（維修道自動限速 90 km/h，換胎本身停 2.6 秒）。值不值得，就看<span class="em">「新胎每圈能快回來的秒數 × 剩下的圈數」有沒有大於 10 秒</span>。剩兩圈就別進了——換上新胎也賺不回來；比賽夠長，換胎就一定划算。真實 F1 的所有「策略」講的都是這條式子。</div>
+  <p style="margin-top:14px"><b>怎麼操作：</b>按 <span class="kbd">T</span> 不會當場換胎，它是<b>預約下一次進站要換哪一種</b>（HUD 上的「PIT 胎」會跟著變）。真正換胎只發生在你把車停進維修道的黃色停車格、靜止約 2.6 秒的時候。電腦對手也有同一套邏輯：胎快沒了才進站，並依照<b>剩幾圈</b>決定要軟胎衝刺還是硬胎跑長途。</p>
+</div>
+
+<!-- 15 -->
+<h2><span class="n">15</span>分段計時：找出你到底慢在哪一段</h2>
+<p class="sub">一圈的總時間告訴你「慢了」，分段告訴你「慢在哪」。</p>
+<div class="card">
+  <p class="analogy">如果只量整圈時間，你只知道這圈比上一圈慢了 0.8 秒，卻完全不知道問題在哪個彎。所以賽車把一圈切成三段（<b>S1 / S2 / S3</b>），各自計時——就像考試不只看總分，還要看每一科分數，才知道該補哪一科。</p>
+  <div class="key">遊戲把賽道長度平均切成三段，每次通過分段線就跳出一個 <b>±差距</b>：綠色代表你剛剛破了這一段的最佳紀錄，紅色代表比自己的最好還慢。三段時間加起來剛好等於整圈時間。<b>看差距練車，比盯著總時間有效得多</b>——它會直接告訴你哪一段值得再多冒一點險。</div>
+</div>
+
+<!-- 16 -->
+<h2><span class="n">16</span>排位賽：為什麼要先跑一圈「不算成績」的？</h2>
+<p class="sub">起跑順序不是抽籤，是自己跑出來的。</p>
+<div class="card">
+  <p>正式比賽前有一段<b>排位賽</b>：全場同時上路，跑<span class="em">一圈暖胎出場圈（不計時）+ 兩圈計時圈</span>，最快的那圈決定你的起跑格。誰快誰排前面，沒跑出時間的排最後。</p>
+  <p class="analogy">那圈「不計時」的出場圈不是浪費——回到第 8 點：<b>冷的輪胎不抓地</b>。用一圈把胎溫和煞車溫度養起來，第二圈才有真正的抓地力可以拚。就像短跑選手不會一到場就直接起跑，一定先熱身。</p>
+  <div class="key">排位為什麼重要？因為賽道上<b>超車很難</b>——前車擋住你的路線、也擋住你的空氣。乾淨的一圈換來的前排位置，往往比整場比賽拚命超車還划算。（遊戲裡排位圈不會覆蓋你那條賽道的個人最佳紀錄，按 <span class="kbd">Enter</span> 可以提前結束排位。）</div>
+</div>
+
+<!-- 17 -->
+<h2><span class="n">17</span>積分榜：為什麼冠軍不一定每場都贏？</h2>
+<p class="sub">賽季比的不是單場爆發，是「穩定」。</p>
+<div class="card">
+  <p>錦標賽模式把 7 條賽道串成一個賽季，每站照名次給分：</p>
+  <div class="scrollx"><table>
+    <tr><th>名次</th><td>P1</td><td>P2</td><td>P3</td><td>P4</td><td>P5</td><td>P6</td><td>P7</td><td>P8</td></tr>
+    <tr><th>積分</th><td class="gear">25</td><td>18</td><td>15</td><td>12</td><td>10</td><td>8</td><td>6</td><td>4</td></tr>
+  </table></div>
+  <p class="analogy">看一下這串數字的<b>間距</b>：第 1 名和第 2 名差 7 分，第 2 名和第 3 名只差 3 分，往後越差越小。這個設計是刻意的——<b>贏一場很值錢，但「每場都在前段」更值錢</b>。</p>
+  <div class="key"><b>算給你看：</b>A 選手兩站拿了 P1 + P8（25 + 4 = <b>29 分</b>），B 選手兩站都拿 P3（15 + 15 = <b>30 分</b>）。從來沒贏過的 B 反而領先。這就是為什麼真實 F1 的車手常說「先把車帶回終點」——<span class="em">完賽的第 4 名，永遠大於退賽的第 1 名</span>。</div>
+</div>
+
+<!-- 18 -->
+<h2><span class="n">18</span>遊戲怎麼「畫」出這一整個世界？</h2>
+<p class="sub">關鍵不是畫得多，而是<b>想辦法不要重畫</b>。</p>
+<div class="card">
+  <p>畫面每秒要更新 60 次，也就是每一幀只有大約 <b>16 毫秒</b>可以用。超過，你就會感覺到卡頓。所以做遊戲有一半的工夫，都花在「怎麼少做一點事」。</p>
+  <ul>
+    <li><b>先畫好、存起來、重複用（快取）</b>：看台上的觀眾原本每一幀都要一顆一顆重畫，8 座看台就是 2,300 多個小方塊，經過主看台時直接掉幀。解法是把看台的固定部分<b>先畫到一張隱形的圖上</b>，之後每幀只要把那張圖貼一次就好——旗子和閃光燈才即時畫，所以人群看起來還是活的。</li>
+    <li><b>遠的東西用小圖（mip 金字塔）</b>：但只存一張大圖反而更慢——把一張巨圖縮到螢幕上一小塊，縮圖本身就很花時間。所以每座看台額外準備一整套<b>逐級減半的小圖</b>，看它在畫面上多大就挑差不多大的那張來貼。近的仍然清晰，遠的省下大把時間。</li>
+    <li><b>看不到的就別畫</b>：被擋住、跑到相機後面、遠到只剩一個點的東西，通通跳過。這叫「剔除」，是所有 3D 遊戲的基本功。</li>
+  </ul>
+  <div class="key"><b>一個誠實的失敗：</b>這款遊戲曾經做過「賽道有高低起伏」——山坡、爬升、盲彎頂都做出來了，物理完全沒動。但用來處理「山頭擋住後面」的那套判斷，建立在「賽道上排在後面的路段，一定離你比較遠」這個假設上；而 Spa 這種會<b>繞回自己上方</b>的賽道，這個假設根本不成立，結果整條路每幾幀就閃一次。修了三輪還是有殘影，最後<b>整個功能被拿掉</b>。<br>寫程式常常是這樣：讓它動起來不難，難的是確認你當初的假設在所有情況下都還成立。</div>
+</div>
+
 <!-- cheat sheet -->
 <h2><span class="n">★</span>一張表記住怎麼開</h2>
 <div class="card">
@@ -234,8 +294,12 @@
     <tr><td>髮夾彎 / 小彎</td><td>一定要慢（一二檔）</td><td>半徑小，過彎極限速度低</td></tr>
     <tr><td>掉草地</td><td>先鬆油、慢慢轉回</td><td>抓地只剩六成，硬轉會打滑</td></tr>
     <tr><td>上直線</td><td>按住 ERS + DRS</td><td>多一股推力又少阻力，不開就輸 AI</td></tr>
+    <tr><td>剛上場 / 排位出場圈</td><td>先跑一圈養胎溫</td><td>冷胎不抓地，第二圈才拚得動</td></tr>
+    <tr><td>輪胎快沒了</td><td>先按 T 選胎，再進維修道</td><td>一次停站約 10 秒，剩太少圈就別進</td></tr>
+    <tr><td>某一段一直慢</td><td>看 S1/S2/S3 的 ±差距</td><td>總時間只說「慢」，分段才說「慢在哪」</td></tr>
+    <tr><td>錦標賽</td><td>穩穩完賽，別為一個位置賭</td><td>P3+P3 比 P1+P8 還多分</td></tr>
   </table>
-  <div class="key">控制鍵：<span class="kbd">W / ↑</span> 油門 · <span class="kbd">S / ↓</span> 煞車 · <span class="kbd">A D / ← →</span> 轉向 · <span class="kbd">Shift</span> ERS 加速 · <span class="kbd">F</span> DRS · <span class="kbd">空白</span> 手煞車</div>
+  <div class="key">控制鍵：<span class="kbd">W / ↑</span> 油門 · <span class="kbd">S / ↓</span> 煞車 · <span class="kbd">A D / ← →</span> 轉向 · <span class="kbd">Shift</span> ERS 加速 · <span class="kbd">F</span> DRS · <span class="kbd">空白</span> 手煞車 · <span class="kbd">T</span> 選下次進站的胎 · <span class="kbd">Enter</span> 提前結束排位 · <span class="kbd">P</span> 暫停 · <span class="kbd">R</span> 重跑</div>
 </div>
 
 <footer>
